@@ -174,16 +174,20 @@
         </form>
     </div>
 
+    @php
+        $existingQuestions = $quiz->questions->map(fn ($q) => [
+            'type' => $q->type,
+            'question_text' => $q->question_text,
+            'options' => $q->options ?? ['', '', '', ''],
+            'correct_answer' => $q->correct_answer ?? '',
+            'explanation' => $q->explanation ?? '',
+        ])->values();
+    @endphp
+
     @push('scripts')
     <script>
         function quizEditor() {
-            const existingQuestions = @json($quiz->questions->map(fn ($q) => [
-                'type' => $q->type,
-                'question_text' => $q->question_text,
-                'options' => $q->options,
-                'correct_answer' => $q->correct_answer,
-                'explanation' => $q->explanation ?? '',
-            ])->values());
+            const existingQuestions = @json($existingQuestions);
 
             return {
                 questions: existingQuestions.length > 0 ? existingQuestions : [{
