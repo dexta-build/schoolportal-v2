@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Cache;
 
 class ExamQuestion extends Model
 {
@@ -64,5 +65,16 @@ class ExamQuestion extends Model
     public function isAutoGradable(): bool
     {
         return in_array($this->type, ['multiple_choice', 'true_false', 'fill_blank', 'matching']);
+    }
+
+    protected static function booted(): void
+    {
+        static::saved(function (ExamQuestion $question) {
+            Cache::forget("exam_{$question->exam_id}_question_types");
+        });
+
+        static::deleted(function (ExamQuestion $question) {
+            Cache::forget("exam_{$question->exam_id}_question_types");
+        });
     }
 }

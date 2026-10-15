@@ -14,6 +14,7 @@ use App\Services\ScoreAggregationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -281,6 +282,8 @@ class ExamController extends Controller
         $student = auth()->user();
         $classId = $student->studentProfile?->class_id;
 
+        $attempt->loadMissing('exam');
+
         if ((int) $attempt->student_id !== (int) $student->id
             || (int) $attempt->exam->class_id !== (int) $classId
             || ! $attempt->isInProgress()) {
@@ -298,15 +301,27 @@ class ExamController extends Controller
         }
 
         $validated = $request->validate([
-            'question_id' => ['required', 'integer', 'exists:exam_questions,id'],
+            'question_id' => ['required', 'integer'],
             'selected_answer' => ['nullable', 'string', 'max:10000'],
         ]);
 
-        $question = $attempt->exam->questions()->find($validated['question_id']);
-        $isTheory = $question && $question->isTheory();
+        $questionId = (int) $validated['question_id'];
+
+        // Cache question types map [id => type] for this exam to eliminate redundant DB queries on every student option click
+        $questionTypes = Cache::remember(
+            "exam_{$attempt->exam_id}_question_types",
+            3600,
+            fn () => $attempt->exam->questions()->pluck('type', 'id')->all()
+        );
+
+        if (! isset($questionTypes[$questionId])) {
+            abort(422, 'Invalid question.');
+        }
+
+        $isTheory = in_array($questionTypes[$questionId], ['theory', 'short_answer'], true);
 
         ExamAnswer::where('attempt_id', $attempt->id)
-            ->where('question_id', $validated['question_id'])
+            ->where('question_id', $questionId)
             ->update([
                 'selected_answer' => $isTheory ? null : $validated['selected_answer'],
                 'theory_answer' => $isTheory ? $validated['selected_answer'] : null,
@@ -540,13 +555,17 @@ class ExamController extends Controller
                 'ip_address' => request()->ip(),
             ]);
 
-            $questions = $exam->questions()->get();
-            foreach ($questions as $question) {
-                ExamAnswer::create([
+            $questionIds = $exam->questions()->pluck('id');
+            $answerRows = [];
+            foreach ($questionIds as $qId) {
+                $answerRows[] = [
                     'attempt_id' => $attempt->id,
-                    'question_id' => $question->id,
+                    'question_id' => $qId,
                     'school_id' => $student->school_id,
-                ]);
+                ];
+            }
+            if (! empty($answerRows)) {
+                ExamAnswer::insert($answerRows);
             }
 
             if ($mustUseReset && $activeReset) {

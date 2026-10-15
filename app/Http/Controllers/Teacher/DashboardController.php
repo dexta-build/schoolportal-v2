@@ -52,7 +52,7 @@ class DashboardController extends Controller
         // ── Assigned classes with student counts ─────────────────────
         $assignedClasses = $teacher->assignedClasses()
             ->where('is_active', true)
-            ->withCount('students')
+            ->withCount(['students' => fn ($q) => $q->whereHas('user', fn ($u) => $u->where('is_active', true))])
             ->with('level:id,name')
             ->orderBy('name')
             ->get();
