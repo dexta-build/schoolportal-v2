@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Cache;
 
 class QuizQuestion extends Model
 {
@@ -39,5 +40,16 @@ class QuizQuestion extends Model
     public function quiz(): BelongsTo
     {
         return $this->belongsTo(Quiz::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::saved(function (QuizQuestion $question) {
+            Cache::forget("quiz_{$question->quiz_id}_question_ids");
+        });
+
+        static::deleted(function (QuizQuestion $question) {
+            Cache::forget("quiz_{$question->quiz_id}_question_ids");
+        });
     }
 }

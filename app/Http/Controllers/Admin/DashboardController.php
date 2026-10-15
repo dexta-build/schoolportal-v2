@@ -49,11 +49,11 @@ class DashboardController extends Controller
         $cacheKey = "school:{$school->id}:dashboard:stats";
         $stats = Cache::remember($cacheKey, now()->addMinutes(5), function () {
             return [
-                'totalStudents' => User::where('role', 'student')->count(),
-                'maleStudents' => User::where('role', 'student')->where('gender', 'male')->count(),
-                'femaleStudents' => User::where('role', 'student')->where('gender', 'female')->count(),
-                'totalTeachers' => User::where('role', 'teacher')->count(),
-                'totalParents' => User::where('role', 'parent')->count(),
+                'totalStudents' => User::where('role', 'student')->where('is_active', true)->count(),
+                'maleStudents' => User::where('role', 'student')->where('is_active', true)->where('gender', 'male')->count(),
+                'femaleStudents' => User::where('role', 'student')->where('is_active', true)->where('gender', 'female')->count(),
+                'totalTeachers' => User::where('role', 'teacher')->where('is_active', true)->count(),
+                'totalParents' => User::where('role', 'parent')->where('is_active', true)->count(),
                 'totalClasses' => SchoolClass::where('is_active', true)->count(),
             ];
         });

@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
@@ -81,6 +82,18 @@ class User extends Authenticatable
     {
         static::creating(function (self $user): void {
             $user->email_verified_at ??= now();
+        });
+
+        static::saved(function (self $user): void {
+            if ($user->school_id) {
+                Cache::forget("school:{$user->school_id}:dashboard:stats");
+            }
+        });
+
+        static::deleted(function (self $user): void {
+            if ($user->school_id) {
+                Cache::forget("school:{$user->school_id}:dashboard:stats");
+            }
         });
     }
 

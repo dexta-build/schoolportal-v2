@@ -11,6 +11,7 @@ use App\Models\QuizAttempt;
 use App\Services\AchievementService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -114,6 +115,8 @@ class QuizController extends Controller
         $student = auth()->user();
         $classId = $student->studentProfile?->class_id;
 
+        $attempt->loadMissing('quiz');
+
         if ((int) $attempt->student_id !== (int) $student->id
             || (int) $attempt->quiz->class_id !== (int) $classId
             || $attempt->status !== 'in_progress') {
@@ -121,14 +124,27 @@ class QuizController extends Controller
         }
 
         $validated = $request->validate([
-            'question_id' => ['required', 'exists:quiz_questions,id'],
+            'question_id' => ['required', 'integer'],
             'selected_answer' => ['nullable', 'string', 'max:500'],
         ]);
+
+        $questionId = (int) $validated['question_id'];
+
+        // Cache valid question IDs for this quiz to avoid querying quiz_questions on every click
+        $validQuestionIds = Cache::remember(
+            "quiz_{$attempt->quiz_id}_question_ids",
+            3600,
+            fn () => $attempt->quiz->questions()->pluck('id')->all()
+        );
+
+        if (! in_array($questionId, $validQuestionIds, true)) {
+            abort(422, 'Invalid question.');
+        }
 
         QuizAnswer::updateOrCreate(
             [
                 'attempt_id' => $attempt->id,
-                'question_id' => $validated['question_id'],
+                'question_id' => $questionId,
             ],
             [
                 'school_id' => $student->school_id,
