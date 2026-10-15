@@ -156,10 +156,10 @@ class ExamAttempt extends Model
 
         $deadline = $this->accessReset?->available_until ?? $this->exam->available_until;
         if ($deadline) {
-            $remaining[] = now()->diffInSeconds($deadline, false);
+            $remaining[] = (int) now()->diffInSeconds($deadline, false);
         }
 
-        return $remaining === [] ? null : max(0, min($remaining));
+        return $remaining === [] ? null : max(0, (int) min($remaining));
     }
 
     public function answeredCount(): int
