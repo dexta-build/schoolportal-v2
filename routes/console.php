@@ -23,6 +23,12 @@ Schedule::command('db:backup')
     ->withoutOverlapping()
     ->appendOutputTo(storage_path('logs/db-backup.log'));
 
+// Delete abandoned CSV-import / bulk-result preview uploads older than a day
+Schedule::command('storage:prune-temp')->dailyAt('03:30')->onOneServer();
+
+// Count hosting files hourly and email an alert when nearing the cPanel inode limit
+Schedule::command('health:file-usage')->hourly()->withoutOverlapping()->onOneServer();
+
 // Reset free AI credits on the 1st of each month at midnight
 Schedule::command('credits:reset-free')->monthlyOn(1, '00:00')->onOneServer();
 

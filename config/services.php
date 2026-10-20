@@ -74,6 +74,12 @@ return [
         // Email address that receives alerts for critical system events (queue failures, etc.).
         // Falls back to BACKUP_ALERT_EMAIL if PLATFORM_ALERT_EMAIL is not set.
         'alert_email' => env('PLATFORM_ALERT_EMAIL', env('BACKUP_ALERT_EMAIL')),
+
+        // Hosting file (inode) limit — cPanel → Statistics → File Usage.
+        // Path defaults to the parent of the app directory (the cPanel home dir).
+        'file_limit' => (int) env('HOSTING_FILE_LIMIT', 600000),
+        'file_alert_percent' => (float) env('HOSTING_FILE_ALERT_PERCENT', 80),
+        'file_usage_path' => env('HOSTING_FILE_USAGE_PATH'),
     ],
 
 ];

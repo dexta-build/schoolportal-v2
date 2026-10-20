@@ -8,6 +8,22 @@
                     <p class="text-xs text-zinc-500">
                         {{ __('Question') }} <span x-text="currentIndex + 1"></span> {{ __('of') }} {{ $questions->count() }}
                     </p>
+                    {{-- Save status --}}
+                    <p class="mt-0.5 flex items-center gap-1 text-xs" role="status" aria-live="polite">
+                        <template x-if="sessionExpired">
+                            <span class="font-medium text-red-600 dark:text-red-400">{{ __('Session expired — your answers are kept on this device. Log in again to continue.') }}</span>
+                        </template>
+                        <template x-if="!sessionExpired && saveRetrying && unsavedQuestionIds.length > 0">
+                            <span class="font-medium text-amber-600 dark:text-amber-400"
+                                x-text="'{{ __(':n answer(s) not saved yet — retrying. Keep this page open.') }}'.replace(':n', unsavedQuestionIds.length)"></span>
+                        </template>
+                        <template x-if="!sessionExpired && !saveRetrying && isSaving">
+                            <span class="text-zinc-500">{{ __('Saving…') }}</span>
+                        </template>
+                        <template x-if="!sessionExpired && !saveRetrying && !isSaving && unsavedQuestionIds.length === 0 && answeredCount > 0">
+                            <span class="text-emerald-600 dark:text-emerald-400">{{ __('All answers saved') }}</span>
+                        </template>
+                    </p>
                 </div>
                 @if ($remainingSeconds !== null)
                     <div class="shrink-0 text-right">
@@ -176,15 +192,6 @@
             </div>
         </div>
 
-        {{-- Hidden forms for saving answers --}}
-        @foreach ($questions as $question)
-            <form method="POST" action="{{ route('student.quizzes.save-answer', $attempt) }}"
-                id="answerForm_{{ $question->id }}" class="hidden">
-                @csrf
-                <input type="hidden" name="question_id" value="{{ $question->id }}">
-                <input type="hidden" name="selected_answer" :value="answeredQuestions[{{ $question->id }}] || ''">
-            </form>
-        @endforeach
     </div>
 
     @push('scripts')
@@ -195,12 +202,19 @@
             const timeLimit = {{ $remainingSeconds ?? 'null' }};
             const attemptId = '{{ $attempt->id }}';
             const draftKey = 'quiz_draft_' + attemptId;
+            const saveUrl = '{{ route('student.quizzes.save-answer', $attempt) }}';
+            const csrfToken = '{{ csrf_token() }}';
 
             // Convert answers object: {question_id: selected_answer}
             const answeredQuestions = {};
             for (const [qId, answer] of Object.entries(initialAnswers)) {
-                answeredQuestions[qId] = answer;
+                if (answer !== null && answer !== '') {
+                    answeredQuestions[qId] = answer;
+                }
             }
+
+            // What the server has confirmed — anything in answeredQuestions that differs is unsaved
+            const syncedAnswers = { ...answeredQuestions };
 
             // Restore locally-saved draft (covers refresh after network drop)
             try {
@@ -215,6 +229,13 @@
                 currentIndex: 0,
                 totalQuestions,
                 answeredQuestions,
+                syncedAnswers,
+                savingQuestions: {},
+                saveRetrying: false,
+                retryTimer: null,
+                retryDelay: 2000,
+                sessionExpired: false,
+                submitting: false,
                 timeRemaining: timeLimit,
                 timerInterval: null,
                 offlineSubmitQueued: false,
@@ -222,6 +243,15 @@
 
                 get answeredCount() {
                     return Object.values(this.answeredQuestions).filter(a => a !== null && a !== '').length;
+                },
+
+                get unsavedQuestionIds() {
+                    return Object.keys(this.answeredQuestions)
+                        .filter(qId => this.answeredQuestions[qId] !== this.syncedAnswers[qId]);
+                },
+
+                get isSaving() {
+                    return Object.values(this.savingQuestions).some(Boolean);
                 },
 
                 init() {
@@ -236,10 +266,15 @@
                         if (this.offlineSubmitQueued) {
                             this.offlineSubmitQueued = false;
                             this._doFinalSubmit();
+                            return;
                         }
+                        this.flushUnsaved();
                     };
                     window.addEventListener('offline', this._offlineHandler);
                     window.addEventListener('online', this._onlineHandler);
+
+                    // Answers restored from the local draft that never reached the server — send them now
+                    this.flushUnsaved();
                 },
 
                 startTimer() {
@@ -284,7 +319,10 @@
                 },
 
                 _doFinalSubmit() {
-                    try { localStorage.removeItem(draftKey); } catch (e) {}
+                    this.submitting = true;
+                    clearTimeout(this.retryTimer);
+                    // Keep the local draft until the results page confirms the submit worked —
+                    // if the submit request fails, the answers are still here when the student returns
                     this.injectAnswers();
                     document.getElementById('submitForm').submit();
                 },
@@ -307,16 +345,88 @@
                     this.answeredQuestions[questionId] = answer;
                     // Persist draft locally — survives a page reload if network drops
                     try { localStorage.setItem(draftKey, JSON.stringify(this.answeredQuestions)); } catch (e) {}
-                    // Save answer via form submission in background
-                    if (!navigator.onLine) return; // localStorage draft covers this
-                    const form = document.getElementById('answerForm_' + questionId);
-                    if (form) {
-                        const input = form.querySelector('input[name="selected_answer"]');
-                        input.value = answer;
-                        fetch(form.action, {
+                    this.saveAnswerToServer(questionId);
+                },
+
+                // Sends the latest answer for one question. Failures (offline, server errors) are
+                // retried with backoff until the server confirms, so no answer is silently dropped.
+                async saveAnswerToServer(questionId) {
+                    questionId = String(questionId);
+                    if (this.savingQuestions[questionId] || this.submitting || this.sessionExpired) return;
+
+                    const answer = this.answeredQuestions[questionId];
+                    if (answer === this.syncedAnswers[questionId]) return;
+
+                    if (!navigator.onLine) {
+                        this.scheduleRetry();
+                        return;
+                    }
+
+                    this.savingQuestions[questionId] = true;
+                    let confirmed = false;
+
+                    try {
+                        const response = await fetch(saveUrl, {
                             method: 'POST',
-                            body: new FormData(form),
-                        }).catch(() => {});
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'Accept': 'application/json',
+                            },
+                            body: JSON.stringify({ question_id: questionId, selected_answer: answer }),
+                        });
+
+                        if (response.status === 419 || response.status === 401) {
+                            // Session ended — retrying can't succeed. The draft stays on this device
+                            // and is re-sent automatically once the student logs back in.
+                            this.sessionExpired = true;
+                            return;
+                        }
+
+                        // 403/422: attempt closed or question invalid — retrying won't help
+                        if (!response.ok && response.status !== 403 && response.status !== 422) {
+                            throw new Error('Save failed with status ' + response.status);
+                        }
+
+                        const data = await response.json().catch(() => ({}));
+                        if (data.status === 'timed_out' && data.redirect) {
+                            this.submitting = true;
+                            window.location.href = data.redirect;
+                            return;
+                        }
+
+                        this.syncedAnswers[questionId] = answer;
+                        confirmed = true;
+                        this.retryDelay = 2000;
+                        if (this.unsavedQuestionIds.length === 0) this.saveRetrying = false;
+                    } catch (e) {
+                        this.scheduleRetry();
+                    } finally {
+                        this.savingQuestions[questionId] = false;
+                    }
+
+                    // The student changed this answer while the request was in flight
+                    if (confirmed && this.answeredQuestions[questionId] !== this.syncedAnswers[questionId]) {
+                        this.saveAnswerToServer(questionId);
+                    }
+                },
+
+                scheduleRetry() {
+                    this.saveRetrying = true;
+                    if (this.retryTimer) return;
+
+                    this.retryTimer = setTimeout(() => {
+                        this.retryTimer = null;
+                        this.flushUnsaved();
+                    }, this.retryDelay);
+                    this.retryDelay = Math.min(this.retryDelay * 2, 30000);
+                },
+
+                // One at a time, so a classroom reconnecting together doesn't flood the server
+                async flushUnsaved() {
+                    for (const questionId of this.unsavedQuestionIds) {
+                        await this.saveAnswerToServer(questionId);
+                        if (this.retryTimer || this.sessionExpired) return;
                     }
                 },
 

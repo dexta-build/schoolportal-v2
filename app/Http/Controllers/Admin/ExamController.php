@@ -680,9 +680,22 @@ class ExamController extends Controller
             ];
         })->values();
 
+        // In-progress attempts the student can still continue — offered "Allow resume" if their network changed
+        $resumableAttempts = $attempts->flatten()
+            ->filter(fn (ExamAttempt $attempt): bool => $attempt->setRelation('exam', $exam)->isResumable())
+            ->map(fn (ExamAttempt $attempt): array => [
+                'id' => $attempt->id,
+                'name' => $students->firstWhere('id', $attempt->student_id)?->name,
+                'username' => $students->firstWhere('id', $attempt->student_id)?->username,
+                'started_at' => $attempt->started_at->format('M j, g:i A'),
+                'remaining_minutes' => $attempt->remainingSeconds() === null ? null : (int) ceil($attempt->remainingSeconds() / 60),
+            ])
+            ->values();
+
         return view('admin.exams.reset-access', array_merge([
             'exam' => $exam,
             'studentOptions' => $studentOptions,
+            'resumableAttempts' => $resumableAttempts,
         ], $this->viewData()));
     }
 
@@ -786,6 +799,37 @@ class ExamController extends Controller
             ->with('success', __('Fresh access granted to :count student(s) until :date.', [
                 'count' => $students->count(),
                 'date' => $availableUntil->format('M j, Y g:i A'),
+            ]));
+    }
+
+    /**
+     * Release the network (IP) lock on an in-progress attempt so the student can continue it
+     * from a new connection, keeping their saved answers and remaining time.
+     */
+    public function allowResume(Request $request, Exam $exam): RedirectResponse
+    {
+        $validated = $request->validate([
+            'attempt_id' => ['required', 'integer'],
+        ]);
+
+        $attempt = ExamAttempt::with(['exam', 'accessReset', 'student:id,name'])
+            ->where('exam_id', $exam->id)
+            ->whereKey($validated['attempt_id'])
+            ->firstOrFail();
+
+        if (! $attempt->isResumable()) {
+            return redirect()->route($this->routePrefix().'.reset-access', $exam)
+                ->with('error', __(':name\'s attempt can no longer be resumed — its time has run out. Use Reset Access below to give a fresh attempt.', [
+                    'name' => $attempt->student?->name,
+                ]));
+        }
+
+        // The student's next visit locks the attempt to their new network
+        $attempt->update(['ip_address' => null]);
+
+        return redirect()->route($this->routePrefix().'.reset-access', $exam)
+            ->with('success', __(':name can now resume from their current network. Their saved answers are kept.', [
+                'name' => $attempt->student?->name,
             ]));
     }
 

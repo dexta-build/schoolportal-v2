@@ -45,6 +45,50 @@
             </div>
         @endif
 
+        @if (session('success'))
+            <div role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/60 dark:text-emerald-100">
+                {{ session('success') }}
+            </div>
+        @endif
+
+        @if (session('error'))
+            <div role="alert" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 dark:border-red-800/60 dark:bg-red-950/60 dark:text-red-100">
+                {{ session('error') }}
+            </div>
+        @endif
+
+        {{-- Continue an existing attempt (network/IP lock) --}}
+        @if ($resumableAttempts->isNotEmpty())
+            <section class="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+                <div class="border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+                    <h2 class="text-base font-semibold text-zinc-900 dark:text-white">{{ __('Students with an attempt in progress') }}</h2>
+                    <p class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                        {{ __('An attempt is locked to the network it started on. If a student\'s connection changed and they can\'t get back in, allow them to resume — they keep their saved answers and remaining time.') }}
+                    </p>
+                </div>
+                <ul class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    @foreach ($resumableAttempts as $resumable)
+                        <li class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="min-w-0">
+                                <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $resumable['name'] }}</p>
+                                <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                                    {{ $resumable['username'] }} · {{ __('Started') }} {{ $resumable['started_at'] }}
+                                    @if ($resumable['remaining_minutes'] !== null)
+                                        · {{ trans_choice(':count minute left|:count minutes left', $resumable['remaining_minutes'], ['count' => $resumable['remaining_minutes']]) }}
+                                    @endif
+                                </p>
+                            </div>
+                            <form method="POST" action="{{ route($routePrefix . '.allow-resume', $exam) }}">
+                                @csrf
+                                <input type="hidden" name="attempt_id" value="{{ $resumable['id'] }}">
+                                <flux:button type="submit" size="sm" icon="lock-open">{{ __('Allow resume') }}</flux:button>
+                            </form>
+                        </li>
+                    @endforeach
+                </ul>
+            </section>
+        @endif
+
         <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-100">
             <div class="flex items-start gap-3">
                 <flux:icon name="information-circle" class="mt-0.5 size-5 shrink-0" />

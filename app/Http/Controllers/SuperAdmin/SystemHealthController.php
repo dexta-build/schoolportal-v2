@@ -7,6 +7,7 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Models\User;
+use App\Services\FileUsageService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
@@ -14,7 +15,7 @@ use Throwable;
 
 class SystemHealthController extends Controller
 {
-    public function __invoke(): View
+    public function __invoke(FileUsageService $fileUsageService): View
     {
         // ── Database ──────────────────────────────────────────────────────────
         $dbStatus = 'ok';
@@ -59,6 +60,10 @@ class SystemHealthController extends Controller
         $diskFree = (int) @disk_free_space($storagePath);
         $diskUsed = max(0, $diskTotal - $diskFree);
         $diskUsedPercent = $diskTotal > 0 ? round(($diskUsed / $diskTotal) * 100, 1) : 0;
+
+        // ── File Usage (hosting inode limit) ──────────────────────────────────
+        // Scanned hourly by `health:file-usage` — counting on every page load is too slow
+        $fileUsage = $fileUsageService->latest();
 
         // ── Versions ──────────────────────────────────────────────────────────
         $phpVersion = PHP_VERSION;
@@ -114,6 +119,7 @@ class SystemHealthController extends Controller
             $failedJobs === 0,
             ! $debugMode || $env !== 'production',
             $diskUsedPercent < 85,
+            $fileUsage === null || $fileUsage['percent'] < 85,
             collect($paths)->every(fn ($p) => $p['writable']),
         ];
 
@@ -132,6 +138,7 @@ class SystemHealthController extends Controller
             'pendingJobs', 'failedJobs',
             'cacheStatus',
             'diskTotal', 'diskFree', 'diskUsed', 'diskUsedPercent',
+            'fileUsage',
             'phpVersion', 'laravelVersion',
             'env', 'debugMode', 'timezone',
             'cacheDriver', 'queueDriver', 'sessionDriver',

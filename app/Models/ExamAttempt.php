@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Traits\BelongsToTenant;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class ExamAttempt extends Model
 {
     use BelongsToTenant;
+
+    public const LATE_ANSWER_GRACE_SECONDS = 120;
 
     protected $fillable = [
         'exam_id',
@@ -112,7 +115,38 @@ class ExamAttempt extends Model
             return false;
         }
 
-        return now()->diffInSeconds($this->started_at) >= ($this->exam->time_limit_minutes * 60);
+        // Carbon 3 diffs are signed: always diff from the earlier date so elapsed is positive
+        return $this->started_at->diffInSeconds(now()) >= ($this->exam->time_limit_minutes * 60);
+    }
+
+    /**
+     * When the attempt stops accepting work: the earlier of the time limit and the availability deadline.
+     */
+    public function expiresAt(): ?CarbonInterface
+    {
+        $times = [];
+
+        if ($this->exam->time_limit_minutes) {
+            $times[] = $this->started_at->copy()->addMinutes($this->exam->time_limit_minutes);
+        }
+
+        $deadline = $this->accessReset?->available_until ?? $this->exam->available_until;
+        if ($deadline) {
+            $times[] = $deadline;
+        }
+
+        return $times === [] ? null : min($times);
+    }
+
+    /**
+     * Whether answers sent just after expiry should still be saved. Covers the browser's
+     * final auto-submit arriving a few seconds late, or retried saves after a brief outage.
+     */
+    public function acceptsLateAnswers(): bool
+    {
+        $expiresAt = $this->expiresAt();
+
+        return $expiresAt === null || now()->lte($expiresAt->copy()->addSeconds(self::LATE_ANSWER_GRACE_SECONDS));
     }
 
     public function hasExpired(): bool
@@ -150,7 +184,7 @@ class ExamAttempt extends Model
         $remaining = [];
 
         if ($this->exam->time_limit_minutes) {
-            $elapsed = (int) now()->diffInSeconds($this->started_at);
+            $elapsed = (int) $this->started_at->diffInSeconds(now());
             $remaining[] = ($this->exam->time_limit_minutes * 60) - $elapsed;
         }
 

@@ -9,11 +9,13 @@ use App\Models\Quiz;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
 use App\Services\AchievementService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Throwable;
 
 class QuizController extends Controller
 {
@@ -110,7 +112,7 @@ class QuizController extends Controller
         return view('student.quizzes.take', compact('quiz', 'attempt', 'questions', 'answers', 'remainingSeconds'));
     }
 
-    public function saveAnswer(Request $request, QuizAttempt $attempt): RedirectResponse
+    public function saveAnswer(Request $request, QuizAttempt $attempt): RedirectResponse|JsonResponse
     {
         $student = auth()->user();
         $classId = $student->studentProfile?->class_id;
@@ -129,29 +131,30 @@ class QuizController extends Controller
         ]);
 
         $questionId = (int) $validated['question_id'];
+        $expired = $attempt->hasExpired();
 
-        // Cache valid question IDs for this quiz to avoid querying quiz_questions on every click
-        $validQuestionIds = Cache::remember(
-            "quiz_{$attempt->quiz_id}_question_ids",
-            3600,
-            fn () => $attempt->quiz->questions()->pluck('id')->all()
-        );
+        // Within the grace window a late (e.g. retried) answer still counts before the auto-submit
+        if (! $expired || $attempt->acceptsLateAnswers()) {
+            if (! in_array($questionId, $this->questionIds($attempt), true)) {
+                abort(422, 'Invalid question.');
+            }
 
-        if (! in_array($questionId, $validQuestionIds, true)) {
-            abort(422, 'Invalid question.');
+            $this->storeAnswer($attempt, $questionId, $validated['selected_answer']);
         }
 
-        QuizAnswer::updateOrCreate(
-            [
-                'attempt_id' => $attempt->id,
-                'question_id' => $questionId,
-            ],
-            [
-                'school_id' => $student->school_id,
-                'selected_answer' => $validated['selected_answer'],
-                'answered_at' => now(),
-            ]
-        );
+        if ($expired) {
+            $this->submitAttempt($attempt, 'timed_out');
+
+            if ($request->wantsJson()) {
+                return response()->json(['status' => 'timed_out', 'redirect' => route('student.quizzes.results', $attempt)]);
+            }
+
+            return redirect()->route('student.quizzes.results', $attempt);
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['status' => 'saved']);
+        }
 
         return redirect()->back();
     }
@@ -167,38 +170,31 @@ class QuizController extends Controller
             abort(403);
         }
 
+        $expired = $attempt->hasExpired();
+
         // Save any answers bundled with the submit to prevent race conditions
-        // (background fetch saves may not have completed before form submission)
+        // (background fetch saves may not have completed before form submission).
+        // The browser auto-submits at 00:00, so keep them within the grace window.
         $answers = $request->input('answers', []);
-        if (is_array($answers) && ! empty($answers)) {
-            $validQuestionIds = $attempt->quiz->questions()->pluck('id')->all();
+        if (is_array($answers) && ! empty($answers) && (! $expired || $attempt->acceptsLateAnswers())) {
+            $validQuestionIds = $this->questionIds($attempt);
             foreach ($answers as $questionId => $answer) {
                 if (! is_numeric($questionId) || ! in_array((int) $questionId, $validQuestionIds, true)) {
                     continue;
                 }
-                if ($answer === null || $answer === '') {
+                if (! is_string($answer) || $answer === '') {
                     continue;
                 }
-                QuizAnswer::updateOrCreate(
-                    [
-                        'attempt_id' => $attempt->id,
-                        'question_id' => (int) $questionId,
-                    ],
-                    [
-                        'school_id' => $student->school_id,
-                        'selected_answer' => (string) $answer,
-                        'answered_at' => now(),
-                    ]
-                );
+                $this->storeAnswer($attempt, (int) $questionId, $answer);
             }
         }
 
-        $this->submitAttempt($attempt, 'submitted');
+        $this->submitAttempt($attempt, $expired ? 'timed_out' : 'submitted');
 
         return redirect()->route('student.quizzes.results', $attempt);
     }
 
-    public function results(QuizAttempt $attempt): View
+    public function results(QuizAttempt $attempt): View|RedirectResponse
     {
         $student = auth()->user();
 
@@ -218,6 +214,40 @@ class QuizController extends Controller
             ->keyBy('question_id');
 
         return view('student.quizzes.results', compact('quiz', 'attempt', 'answers'));
+    }
+
+    /**
+     * Valid question IDs for the attempt's quiz, cached because it is read on every answer click.
+     *
+     * @return array<int, int>
+     */
+    private function questionIds(QuizAttempt $attempt): array
+    {
+        $load = fn (): array => $attempt->quiz->questions()->pluck('id')->all();
+
+        // A cache outage (e.g. full disk) must never stop a student saving an answer
+        try {
+            return Cache::remember("quiz_{$attempt->quiz_id}_question_ids", 3600, $load);
+        } catch (Throwable $e) {
+            report($e);
+
+            return $load();
+        }
+    }
+
+    private function storeAnswer(QuizAttempt $attempt, int $questionId, ?string $answer): void
+    {
+        QuizAnswer::updateOrCreate(
+            [
+                'attempt_id' => $attempt->id,
+                'question_id' => $questionId,
+            ],
+            [
+                'school_id' => $attempt->school_id,
+                'selected_answer' => $answer,
+                'answered_at' => now(),
+            ]
+        );
     }
 
     private function submitAttempt(QuizAttempt $attempt, string $status): void
@@ -267,7 +297,7 @@ class QuizController extends Controller
                 'percentage' => $percentage,
                 'passed' => $percentage >= $quiz->passing_score,
                 'submitted_at' => now(),
-                'time_spent_seconds' => now()->diffInSeconds($attempt->started_at),
+                'time_spent_seconds' => (int) $attempt->started_at->diffInSeconds(now()),
                 'status' => $status,
             ]);
         });
@@ -280,7 +310,7 @@ class QuizController extends Controller
             if (! empty($newAchievements)) {
                 session()->flash('new_achievements', $newAchievements);
             }
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Don't break quiz flow if achievement check fails
         }
     }

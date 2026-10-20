@@ -283,6 +283,76 @@
             </div>
         </section>
 
+        {{-- ── Hosting File Usage (inode limit) ─────────────────────────────── --}}
+        @php
+            $filePercent = $fileUsage['percent'] ?? 0;
+            $fileLevel = match (true) {
+                $fileUsage === null => 'unknown',
+                $filePercent >= 85  => 'critical',
+                $filePercent >= 70  => 'warning',
+                default             => 'ok',
+            };
+        @endphp
+        <section aria-label="{{ __('Hosting file usage') }}" @class([
+            'rounded-xl border bg-white dark:bg-zinc-900',
+            'border-zinc-200 dark:border-zinc-700'   => in_array($fileLevel, ['ok', 'unknown'], true),
+            'border-amber-200 dark:border-amber-800' => $fileLevel === 'warning',
+            'border-red-200 dark:border-red-800'     => $fileLevel === 'critical',
+        ])>
+            <div class="flex items-start justify-between gap-2 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+                <div>
+                    <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Hosting File Usage') }}</h3>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                        {{ __('Files and folders on the hosting account. When the limit is reached every write fails with "Disk quota exceeded".') }}
+                    </p>
+                </div>
+                @if ($fileLevel === 'critical')
+                    <flux:badge color="red" size="sm">{{ __('Critical') }}</flux:badge>
+                @elseif ($fileLevel === 'warning')
+                    <flux:badge color="amber" size="sm">{{ __('Warning') }}</flux:badge>
+                @elseif ($fileLevel === 'ok')
+                    <x-health-badge :status="true" />
+                @endif
+            </div>
+
+            @if ($fileUsage === null)
+                <p class="px-4 py-4 text-sm text-zinc-600 dark:text-zinc-400">
+                    {{ __('Not scanned yet. It runs hourly via the scheduler, or run') }}
+                    <code class="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs dark:bg-zinc-800">php artisan health:file-usage</code>.
+                </p>
+            @else
+                <div class="grid gap-6 p-4 md:grid-cols-2">
+                    <div>
+                        <div class="mb-1 flex justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                            <span>{{ number_format($filePercent, 1) }}% {{ __('used') }}</span>
+                            <span>{{ number_format($fileUsage['total']) }} / {{ number_format($fileUsage['limit']) }} {{ __('files') }}</span>
+                        </div>
+                        <div class="h-1.5 w-full rounded-full bg-zinc-100 dark:bg-zinc-800">
+                            <div
+                                class="h-1.5 rounded-full transition-all duration-700 @if($fileLevel === 'critical') bg-red-500 @elseif($fileLevel === 'warning') bg-amber-500 @else bg-emerald-500 @endif"
+                                style="width: {{ min(100, $filePercent) }}%"
+                            ></div>
+                        </div>
+                        <p class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+                            {{ __('Last scanned') }} {{ \Illuminate\Support\Carbon::parse($fileUsage['scanned_at'])->diffForHumans() }}
+                        </p>
+                    </div>
+
+                    <div>
+                        <p class="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{{ __('Largest folders') }}</p>
+                        <ul class="divide-y divide-zinc-50 text-sm dark:divide-zinc-800">
+                            @foreach ($fileUsage['folders'] as $folder => $count)
+                                <li class="flex items-center justify-between py-1.5">
+                                    <span class="truncate font-mono text-xs text-zinc-600 dark:text-zinc-400">{{ $folder }}</span>
+                                    <span class="font-medium text-zinc-900 dark:text-zinc-100">{{ number_format($count) }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                </div>
+            @endif
+        </section>
+
         {{-- ── Environment & Runtime ────────────────────────────────────────── --}}
         <div class="grid gap-4 lg:grid-cols-2">
 
@@ -363,6 +433,7 @@
                     ['label' => __('No failed jobs'),          'ok' => $failedJobs === 0,               'msg' => $failedJobs . __(' failed job(s) in queue')],
                     ['label' => __('Debug mode off (prod)'),   'ok' => !$debugMode || $env !== 'production', 'msg' => __('APP_DEBUG is ON in production')],
                     ['label' => __('Disk space OK'),           'ok' => $diskUsedPercent < 85,           'msg' => $diskUsedPercent . __('% disk used — critically high')],
+                    ['label' => __('File usage OK'),           'ok' => $fileUsage === null || $fileUsage['percent'] < 85, 'msg' => ($fileUsage['percent'] ?? 0) . __('% of hosting file limit used — clean up now')],
                     ['label' => __('All paths writable'),      'ok' => collect($paths)->every(fn($p) => $p['writable']), 'msg' => __('Some directories are not writable')],
                 ] as $check)
                     <div class="flex items-start gap-3 bg-white p-4 dark:bg-zinc-900">

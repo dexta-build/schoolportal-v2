@@ -105,4 +105,11 @@
             </div>
         @endif
     </div>
+
+    @push('scripts')
+    <script>
+        // Submission succeeded — the take page's local answer backup is no longer needed
+        try { localStorage.removeItem('quiz_draft_{{ $attempt->id }}'); } catch (e) {}
+    </script>
+    @endpush
 </x-layouts::app>

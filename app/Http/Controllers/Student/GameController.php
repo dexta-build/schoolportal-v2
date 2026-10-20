@@ -57,7 +57,27 @@ class GameController extends Controller
             'max_score' => ['required', 'integer', 'min:1'],
             'time_spent_seconds' => ['required', 'integer', 'min:0'],
             'game_state' => ['nullable', 'array'],
+            'submission_id' => ['nullable', 'string', 'max:64'],
         ]);
+
+        // The browser retries until it gets a response, so a retry after a lost response
+        // must not record the same play twice
+        $submissionId = $validated['submission_id'] ?? null;
+        if ($submissionId !== null) {
+            $existing = GamePlay::where('game_id', $game->id)
+                ->where('student_id', $student->id)
+                ->where('game_state->submission_id', $submissionId)
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'play_id' => $existing->id,
+                    'percentage' => (float) $existing->percentage,
+                    'new_achievements' => [],
+                ]);
+            }
+        }
 
         $percentage = round(($validated['score'] / $validated['max_score']) * 100, 2);
 
@@ -70,7 +90,9 @@ class GameController extends Controller
             'percentage' => $percentage,
             'time_spent_seconds' => $validated['time_spent_seconds'],
             'completed' => true,
-            'game_state' => $validated['game_state'] ?? null,
+            'game_state' => $submissionId !== null
+                ? [...($validated['game_state'] ?? []), 'submission_id' => $submissionId]
+                : ($validated['game_state'] ?? null),
             'started_at' => now()->subSeconds($validated['time_spent_seconds']),
             'completed_at' => now(),
         ]);

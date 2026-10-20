@@ -11,6 +11,7 @@ use App\Models\StudentProfile;
 use App\Models\Term;
 use App\Models\User;
 use App\Services\FileUploadService;
+use App\Services\TempUploadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,8 @@ class BulkResultController extends Controller
 
         $matches = [];
         $unmatched = [];
+        $tempUploads = app(TempUploadService::class);
+        $batch = $tempUploads->newBatch(TempUploadService::TYPE_BULK_RESULTS, app('current.school')->id);
 
         foreach ($request->file('result_files') as $file) {
             $filename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
@@ -71,8 +74,8 @@ class BulkResultController extends Controller
                     ->where('term_id', $termId)
                     ->exists();
 
-                // Store temp file
-                $tempPath = $file->storeAs('bulk-results', $file->getClientOriginalName(), 'local');
+                // Held until the admin confirms — in this upload's own folder, so it can't clash with anyone else's
+                $tempPath = $tempUploads->store($file, $batch);
 
                 $matches[] = [
                     'student_id' => $student->id,
@@ -117,6 +120,7 @@ class BulkResultController extends Controller
         $imported = 0;
         $school = app('current.school');
         $uploadService = app(FileUploadService::class);
+        $tempUploads = app(TempUploadService::class);
         $term = Term::with('session')->findOrFail($request->input('term_id'));
         $eligibleStudentIds = StudentProfile::where('class_id', $request->input('class_id'))
             ->enrolledByTerm($term)
@@ -129,11 +133,12 @@ class BulkResultController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($request, &$imported, $school, $uploadService) {
+        DB::transaction(function () use ($request, &$imported, $school, $uploadService, $tempUploads) {
             foreach ($request->input('imports') as $item) {
-                $fullPath = storage_path('app/private/'.$item['temp_path']);
+                // The path comes back from the browser — only accept this school's own preview files
+                $fullPath = $tempUploads->resolve($item['temp_path'], TempUploadService::TYPE_BULK_RESULTS, $school->id);
 
-                if (! file_exists($fullPath)) {
+                if ($fullPath === null) {
                     continue;
                 }
 
