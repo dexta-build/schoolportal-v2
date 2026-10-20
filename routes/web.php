@@ -300,6 +300,7 @@ Route::prefix('portal')->group(function () {
             Route::post('exams', [AdminExamController::class, 'store'])->name('admin.exams.store');
             Route::get('exams/{exam}/reset-access', [AdminExamController::class, 'resetAccessForm'])->name('admin.exams.reset-access');
             Route::post('exams/{exam}/reset-access', [AdminExamController::class, 'resetAccess'])->name('admin.exams.reset-access.store');
+            Route::post('exams/{exam}/allow-resume', [AdminExamController::class, 'allowResume'])->name('admin.exams.allow-resume');
             Route::get('exams/{exam}', [AdminExamController::class, 'show'])->name('admin.exams.show');
             Route::get('exams/{exam}/preview', [AdminExamController::class, 'preview'])->name('admin.exams.preview');
             Route::get('exams/{exam}/edit', [AdminExamController::class, 'edit'])->name('admin.exams.edit');

@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ImportStudentsCsvJob;
 use App\Rules\SafeCsvFile;
 use App\Services\CsvImportService;
+use App\Services\TempUploadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -75,8 +76,9 @@ class StudentImportController extends Controller
         $result['valid_count'] = count(array_filter($result['rows'], fn ($r) => $r['_valid']));
         $result['error_count'] = count($result['rows']) - $result['valid_count'];
 
-        // Store file temporarily for the import step
-        $tempPath = $file->storeAs('imports', 'teacher_students_'.time().'.csv', 'local');
+        // Store file temporarily for the import step, in this upload's own folder
+        $tempUploads = app(TempUploadService::class);
+        $tempPath = $tempUploads->store($file, $tempUploads->newBatch(TempUploadService::TYPE_STUDENT_IMPORT, $school->id));
 
         return view('teacher.students.import-preview', [
             'rows' => $result['rows'],
@@ -102,14 +104,14 @@ class StudentImportController extends Controller
             'default_password' => ['required', 'string', 'min:6'],
         ]);
 
-        $fullPath = storage_path('app/private/'.$request->input('temp_path'));
+        $school = app('current.school');
 
-        if (! file_exists($fullPath)) {
+        // The path comes back from the browser — only accept this school's own preview file
+        if (app(TempUploadService::class)->resolve($request->input('temp_path'), TempUploadService::TYPE_STUDENT_IMPORT, $school->id) === null) {
             return redirect()->route('teacher.students.import')
                 ->with('error', __('Import file expired. Please upload again.'));
         }
 
-        $school = app('current.school');
         $teacher = auth()->user();
         $allowedClassIds = $teacher->assignedClasses()->pluck('id')->toArray();
         $importKey = Str::uuid()->toString();

@@ -20,6 +20,7 @@ use App\Models\Subject;
 use App\Models\Term;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\Concerns\WithSchoolContext;
 use Tests\TestCase;
 
@@ -592,10 +593,10 @@ class StudentExamTest extends TestCase
             ->assertOk()
             ->assertDontSee('Resume')
             ->assertDontSee('Retake')
-            ->assertSee('Time Elapsed')
             ->assertSee('View Results');
 
-        $this->assertSame('timed_out', $attempt->fresh()->status);
+        // Objective exams are graded straight after the auto-submit, so status moves past 'timed_out'
+        $this->assertFalse($attempt->fresh()->isInProgress());
         $this->assertSame('time_elapsed', $attempt->fresh()->completion_reason);
     }
 
@@ -752,6 +753,255 @@ class StudentExamTest extends TestCase
     }
 
     // ── Helpers ──
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Timer & answer-save resilience
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_remaining_time_counts_down_across_reloads(): void
+    {
+        $this->exam->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+
+        $this->travel(4)->minutes();
+
+        $remaining = $this->actingAs($this->student)
+            ->get(route('student.exams.take', $attempt))
+            ->assertOk()
+            ->viewData('remainingSeconds');
+
+        $this->assertGreaterThanOrEqual(355, $remaining);
+        $this->assertLessThanOrEqual(360, $remaining);
+    }
+
+    public function test_submit_just_after_time_limit_keeps_answers_sent_with_it(): void
+    {
+        $this->exam->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+        $question = $this->exam->questions->first();
+
+        // The browser's auto-submit at 00:00 arrives a few seconds late
+        $this->travel(10 * 60 + 30)->seconds();
+
+        $this->actingAs($this->student)
+            ->post(route('student.exams.submit', $attempt), ['answers' => [$question->id => 'Water']])
+            ->assertRedirect(route('student.exams.results', $attempt));
+
+        $this->assertSame('Water', ExamAnswer::where('attempt_id', $attempt->id)->where('question_id', $question->id)->value('selected_answer'));
+        $this->assertSame('time_elapsed', $attempt->fresh()->completion_reason);
+        $this->assertSame(10, $attempt->fresh()->score);
+    }
+
+    public function test_submit_after_grace_period_ignores_answers_sent_with_it(): void
+    {
+        $this->exam->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+        $question = $this->exam->questions->first();
+
+        $this->travel(10 * 60 + ExamAttempt::LATE_ANSWER_GRACE_SECONDS + 60)->seconds();
+
+        $this->actingAs($this->student)
+            ->post(route('student.exams.submit', $attempt), ['answers' => [$question->id => 'Water']])
+            ->assertRedirect(route('student.exams.results', $attempt));
+
+        $this->assertNull(ExamAnswer::where('attempt_id', $attempt->id)->where('question_id', $question->id)->value('selected_answer'));
+        $this->assertFalse($attempt->fresh()->isInProgress());
+    }
+
+    public function test_retried_save_within_grace_period_is_kept_and_auto_submits(): void
+    {
+        $this->exam->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+        $question = $this->exam->questions->first();
+
+        $this->travel(10 * 60 + 20)->seconds();
+
+        $this->actingAs($this->student)
+            ->postJson(route('student.exams.save-answer', $attempt), [
+                'question_id' => $question->id,
+                'selected_answer' => 'Water',
+            ])
+            ->assertOk()
+            ->assertJson(['status' => 'timed_out']);
+
+        $this->assertSame('Water', ExamAnswer::where('attempt_id', $attempt->id)->where('question_id', $question->id)->value('selected_answer'));
+        $this->assertFalse($attempt->fresh()->isInProgress());
+    }
+
+    public function test_saving_answer_survives_cache_failure(): void
+    {
+        $attempt = $this->startAttempt();
+        $question = $this->exam->questions->first();
+
+        // Fail only the exam question-types cache write, like the "Disk quota exceeded" incident
+        Cache::partialMock()
+            ->shouldReceive('remember')
+            ->andReturnUsing(function (string $key, mixed $ttl, \Closure $callback): mixed {
+                if (str_starts_with($key, 'exam_')) {
+                    throw new \ErrorException('file_put_contents(): Failed to open stream: Disk quota exceeded');
+                }
+
+                return $callback();
+            });
+
+        $this->actingAs($this->student)
+            ->postJson(route('student.exams.save-answer', $attempt), [
+                'question_id' => $question->id,
+                'selected_answer' => 'Water',
+            ])
+            ->assertOk()
+            ->assertJson(['status' => 'saved']);
+
+        $this->assertSame('Water', ExamAnswer::where('attempt_id', $attempt->id)->where('question_id', $question->id)->value('selected_answer'));
+    }
+
+    public function test_theory_answer_is_shown_again_after_reload(): void
+    {
+        $theory = ExamQuestion::create([
+            'exam_id' => $this->exam->id,
+            'school_id' => $this->school->id,
+            'type' => 'theory',
+            'question_text' => 'Explain the water cycle.',
+            'options' => [],
+            'correct_answer' => '',
+            'points' => 10,
+            'sort_order' => 2,
+        ]);
+        $this->exam->load('questions');
+
+        $attempt = $this->startAttempt();
+
+        $this->actingAs($this->student)
+            ->postJson(route('student.exams.save-answer', $attempt), [
+                'question_id' => $theory->id,
+                'selected_answer' => 'Water evaporates, condenses and falls as rain.',
+            ])
+            ->assertOk();
+
+        $answers = $this->actingAs($this->student)
+            ->get(route('student.exams.take', $attempt))
+            ->assertOk()
+            ->viewData('answers');
+
+        $this->assertSame('Water evaporates, condenses and falls as rain.', $answers[$theory->id]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Network (IP) lock, "Allow resume", and reopening a missed CBT
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_resume_from_a_new_network_explains_why_instead_of_silently_reloading(): void
+    {
+        $attempt = $this->startAttempt();
+        $attempt->update(['ip_address' => '10.9.8.7']);
+
+        $this->actingAs($this->student)
+            ->followingRedirects()
+            ->post(route('student.exams.start', $this->exam))
+            ->assertOk()
+            ->assertViewIs('student.exams.index')
+            ->assertSee('Ask your school admin to allow you to resume');
+    }
+
+    public function test_admin_allow_resume_lets_student_continue_with_saved_answers(): void
+    {
+        $attempt = $this->startAttempt();
+        $question = $this->exam->questions->first();
+
+        $this->actingAs($this->student)
+            ->postJson(route('student.exams.save-answer', $attempt), ['question_id' => $question->id, 'selected_answer' => 'Water'])
+            ->assertOk();
+
+        // The student's network changed mid-exam
+        $attempt->update(['ip_address' => '10.9.8.7']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.exams.reset-access', $this->exam))
+            ->assertOk()
+            ->assertSee('Students with an attempt in progress')
+            ->assertSee($this->student->name)
+            ->assertSee('Allow resume');
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.exams.allow-resume', $this->exam), ['attempt_id' => $attempt->id])
+            ->assertRedirect(route('admin.exams.reset-access', $this->exam))
+            ->assertSessionHas('success');
+
+        $this->assertNull($attempt->fresh()->ip_address);
+
+        $answers = $this->actingAs($this->student)
+            ->get(route('student.exams.take', $attempt))
+            ->assertOk()
+            ->viewData('answers');
+
+        $this->assertSame('Water', $answers[$question->id]);
+        $this->assertSame('in_progress', $attempt->fresh()->status);
+        // Locked again, to the network the student resumed from
+        $this->assertSame('127.0.0.1', $attempt->fresh()->ip_address);
+    }
+
+    public function test_allow_resume_is_refused_once_time_has_run_out(): void
+    {
+        $this->exam->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+        $attempt->update(['ip_address' => '10.9.8.7']);
+
+        $this->travel(11)->minutes();
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.exams.allow-resume', $this->exam), ['attempt_id' => $attempt->id])
+            ->assertRedirect(route('admin.exams.reset-access', $this->exam))
+            ->assertSessionHas('error');
+
+        $this->assertSame('10.9.8.7', $attempt->fresh()->ip_address);
+    }
+
+    public function test_teacher_cannot_allow_resume(): void
+    {
+        $attempt = $this->startAttempt();
+        $attempt->update(['ip_address' => '10.9.8.7']);
+
+        $this->actingAs($this->createSchoolUser('teacher'))
+            ->post(route('admin.exams.allow-resume', $this->exam), ['attempt_id' => $attempt->id])
+            ->assertForbidden();
+
+        $this->assertSame('10.9.8.7', $attempt->fresh()->ip_address);
+    }
+
+    public function test_admin_can_reopen_a_closed_assessment_for_a_student_who_missed_it(): void
+    {
+        // Opening the page first also puts the test process on the school's timezone
+        $this->actingAs($this->admin)->get(route('admin.exams.reset-access', $this->exam))->assertOk();
+
+        $this->exam->update([
+            'category' => 'assessment',
+            'available_from' => now()->subDays(2),
+            'available_until' => now()->subHour(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.exams.reset-access', $this->exam))
+            ->assertOk()
+            ->assertSee('Missed');
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.exams.reset-access.store', $this->exam), [
+                'scope' => 'students',
+                'student_ids' => [$this->student->id],
+                'available_until' => now()->addDay()->format('Y-m-d H:i:s'),
+                'reason' => 'Was absent',
+            ])
+            ->assertRedirect(route('admin.exams.show', $this->exam));
+
+        $this->actingAs($this->student)
+            ->post(route('student.exams.start', $this->exam))
+            ->assertRedirect();
+
+        // Same CBT record — not a copy
+        $attempt = ExamAttempt::where('student_id', $this->student->id)->sole();
+        $this->assertSame($this->exam->id, $attempt->exam_id);
+        $this->assertSame('in_progress', $attempt->status);
+    }
 
     private function createPublishedExam(): Exam
     {

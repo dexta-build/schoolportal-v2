@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Models\School;
 use App\Services\CsvImportService;
+use App\Services\TempUploadService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -38,7 +39,7 @@ class ImportStudentsCsvJob implements ShouldQueue
 
     /**
      * @param  int  $schoolId  Tenant the import belongs to.
-     * @param  string  $storagePath  Relative path within storage/app/private (e.g. "imports/students_1234.csv").
+     * @param  string  $storagePath  Relative path on the local disk from TempUploadService (e.g. "imports/school_1/{uuid}/students.csv").
      * @param  string  $defaultPassword  Plain-text default password for new students (will be bcrypt'd per row).
      * @param  string  $importKey  UUID used as a cache key so the caller can poll for the result.
      * @param  array  $allowedClassIds  When non-empty, rows whose class_id is not in this list are skipped
@@ -54,9 +55,10 @@ class ImportStudentsCsvJob implements ShouldQueue
 
     public function handle(CsvImportService $csvService): void
     {
-        $fullPath = storage_path('app/private/'.$this->storagePath);
+        $fullPath = app(TempUploadService::class)
+            ->resolve($this->storagePath, TempUploadService::TYPE_STUDENT_IMPORT, $this->schoolId);
 
-        if (! file_exists($fullPath)) {
+        if ($fullPath === null) {
             $this->cacheResult(['status' => 'failed', 'message' => 'Import file not found.']);
 
             return;
@@ -133,8 +135,9 @@ class ImportStudentsCsvJob implements ShouldQueue
         );
 
         // Clean up the temp file if the worker was killed before finally{} in handle() ran.
-        $fullPath = storage_path('app/private/'.$this->storagePath);
-        if (file_exists($fullPath)) {
+        $fullPath = app(TempUploadService::class)
+            ->resolve($this->storagePath, TempUploadService::TYPE_STUDENT_IMPORT, $this->schoolId);
+        if ($fullPath !== null) {
             @unlink($fullPath);
         }
     }

@@ -2,6 +2,18 @@
     <div class="space-y-6">
         <h1 class="text-xl font-bold text-zinc-900 dark:text-white">{{ __('CBT') }}</h1>
 
+        @if (session('error'))
+            <div role="alert" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 dark:border-red-800/60 dark:bg-red-950/60 dark:text-red-100">
+                {{ session('error') }}
+            </div>
+        @endif
+
+        @if (session('success'))
+            <div role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/60 dark:text-emerald-100">
+                {{ session('success') }}
+            </div>
+        @endif
+
         {{-- Category Tabs --}}
         @php
             $currentCategory = request('category');

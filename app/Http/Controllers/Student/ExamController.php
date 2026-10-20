@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Throwable;
 
 class ExamController extends Controller
 {
@@ -232,7 +233,14 @@ class ExamController extends Controller
         // IP session lock — prevent resuming from a different IP (e.g. shared device hand-off)
         if ($attempt->ip_address && $attempt->ip_address !== request()->ip()) {
             return redirect()->route($this->routePrefix().'.index')
-                ->with('error', __('This exam session is locked to another device. Please contact your teacher.'));
+                ->with('error', __('Your :label is locked to the network you started it on, and your connection has changed. Ask your school admin to allow you to resume — your saved answers will be kept.', [
+                    'label' => mb_strtolower($this->categoryLabel($attempt->exam->category)),
+                ]));
+        }
+
+        // Unlocked by an admin ("Allow resume") — lock again to the network the student resumes from
+        if (! $attempt->ip_address) {
+            $attempt->update(['ip_address' => request()->ip()]);
         }
 
         if ($attempt->hasExpired()) {
@@ -260,7 +268,8 @@ class ExamController extends Controller
         $remainingSeconds = $attempt->remainingSeconds();
 
         // Transform saved answers to {question_id: selected_answer}
-        $answersForJs = $answers->mapWithKeys(fn ($a) => [$a->question_id => $a->selected_answer])->all();
+        // Theory/short answers live in theory_answer, so they show again after a reload
+        $answersForJs = $answers->mapWithKeys(fn ($a) => [$a->question_id => $a->selected_answer ?? $a->theory_answer])->all();
 
         return view('student.exams.take', [
             'exam' => $exam,
@@ -290,7 +299,26 @@ class ExamController extends Controller
             abort(403);
         }
 
-        if ($attempt->hasExpired()) {
+        $validated = $request->validate([
+            'question_id' => ['required', 'integer'],
+            'selected_answer' => ['nullable', 'string', 'max:10000'],
+        ]);
+
+        $questionId = (int) $validated['question_id'];
+        $expired = $attempt->hasExpired();
+
+        // Within the grace window a late (e.g. retried) answer still counts before the auto-submit
+        if (! $expired || $attempt->acceptsLateAnswers()) {
+            $questionTypes = $this->questionTypes($attempt);
+
+            if (! isset($questionTypes[$questionId])) {
+                abort(422, 'Invalid question.');
+            }
+
+            $this->storeAnswer($attempt, $questionId, $questionTypes[$questionId], $validated['selected_answer']);
+        }
+
+        if ($expired) {
             $this->autoSubmit($attempt);
 
             if ($request->wantsJson()) {
@@ -299,34 +327,6 @@ class ExamController extends Controller
 
             return redirect()->route($this->routePrefix().'.results', $attempt);
         }
-
-        $validated = $request->validate([
-            'question_id' => ['required', 'integer'],
-            'selected_answer' => ['nullable', 'string', 'max:10000'],
-        ]);
-
-        $questionId = (int) $validated['question_id'];
-
-        // Cache question types map [id => type] for this exam to eliminate redundant DB queries on every student option click
-        $questionTypes = Cache::remember(
-            "exam_{$attempt->exam_id}_question_types",
-            3600,
-            fn () => $attempt->exam->questions()->pluck('type', 'id')->all()
-        );
-
-        if (! isset($questionTypes[$questionId])) {
-            abort(422, 'Invalid question.');
-        }
-
-        $isTheory = in_array($questionTypes[$questionId], ['theory', 'short_answer'], true);
-
-        ExamAnswer::where('attempt_id', $attempt->id)
-            ->where('question_id', $questionId)
-            ->update([
-                'selected_answer' => $isTheory ? null : $validated['selected_answer'],
-                'theory_answer' => $isTheory ? $validated['selected_answer'] : null,
-                'answered_at' => now(),
-            ]);
 
         if ($request->wantsJson()) {
             return response()->json(['status' => 'saved']);
@@ -396,31 +396,27 @@ class ExamController extends Controller
             abort(403);
         }
 
-        if ($attempt->hasExpired()) {
+        $expired = $attempt->hasExpired();
+
+        // Save any final answers bundled with submit. The browser auto-submits when its timer
+        // hits zero, so this usually arrives just after expiry — keep it within the grace window.
+        $answers = $request->input('answers', []);
+        if (is_array($answers) && (! $expired || $attempt->acceptsLateAnswers())) {
+            $questionTypes = $this->questionTypes($attempt);
+            foreach ($answers as $questionId => $answer) {
+                if (! is_numeric($questionId) || ! isset($questionTypes[(int) $questionId])) {
+                    continue;
+                }
+
+                $this->storeAnswer($attempt, (int) $questionId, $questionTypes[(int) $questionId], is_string($answer) ? $answer : null);
+            }
+        }
+
+        if ($expired) {
             $this->autoSubmit($attempt);
 
             return redirect()->route($this->routePrefix().'.results', $attempt)
                 ->with('error', __('Your time elapsed before submission, so your saved work was submitted automatically.'));
-        }
-
-        // Save any final answers bundled with submit
-        $answers = $request->input('answers', []);
-        if (is_array($answers)) {
-            $validQuestions = $attempt->exam->questions()->pluck('type', 'id');
-            foreach ($answers as $questionId => $answer) {
-                if (! is_numeric($questionId) || ! $validQuestions->has((int) $questionId)) {
-                    continue;
-                }
-
-                $isTheory = in_array($validQuestions->get((int) $questionId), ['theory', 'short_answer'], true);
-                ExamAnswer::where('attempt_id', $attempt->id)
-                    ->where('question_id', (int) $questionId)
-                    ->update([
-                        'selected_answer' => $isTheory ? null : (is_string($answer) ? $answer : null),
-                        'theory_answer' => $isTheory ? (is_string($answer) ? $answer : null) : null,
-                        'answered_at' => now(),
-                    ]);
-            }
         }
 
         DB::transaction(function () use ($attempt) {
@@ -481,6 +477,38 @@ class ExamController extends Controller
     }
 
     // ── Private helpers ──
+
+    /**
+     * Question types map [id => type] for the attempt's exam, cached because it is read on every answer click.
+     *
+     * @return array<int, string>
+     */
+    private function questionTypes(ExamAttempt $attempt): array
+    {
+        $load = fn (): array => $attempt->exam->questions()->pluck('type', 'id')->all();
+
+        // A cache outage (e.g. full disk) must never stop a student saving an answer
+        try {
+            return Cache::remember("exam_{$attempt->exam_id}_question_types", 3600, $load);
+        } catch (Throwable $e) {
+            report($e);
+
+            return $load();
+        }
+    }
+
+    private function storeAnswer(ExamAttempt $attempt, int $questionId, string $type, ?string $answer): void
+    {
+        $isTheory = in_array($type, ['theory', 'short_answer'], true);
+
+        ExamAnswer::where('attempt_id', $attempt->id)
+            ->where('question_id', $questionId)
+            ->update([
+                'selected_answer' => $isTheory ? null : $answer,
+                'theory_answer' => $isTheory ? $answer : null,
+                'answered_at' => now(),
+            ]);
+    }
 
     private function autoSubmit(ExamAttempt $attempt, string $reason = 'time_elapsed'): void
     {

@@ -193,10 +193,11 @@
                             :style="'width:' + finalPercentage + '%'"></div>
                     </div>
 
-                    {{-- Offline queued notice --}}
-                    <div x-show="offlineScoreQueued" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                    {{-- Score not yet confirmed by the server --}}
+                    <div x-show="offlineScoreQueued || sessionExpired" role="status" aria-live="polite" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
                         <svg class="size-4 shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.584 10.587a2 2 0 0 0 2.828 2.83m5.145 5.145A9.955 9.955 0 0 1 12 22C6.477 22 2 17.523 2 12c0-2.106.654-4.062 1.77-5.672m3.144-2.65A9.956 9.956 0 0 1 12 2c5.523 0 10 4.477 10 10 0 2.107-.655 4.063-1.77 5.673"/></svg>
-                        {{ __("Offline — your score will be saved when you reconnect.") }}
+                        <span x-show="sessionExpired">{{ __('Session expired — your score is kept on this device and will be saved after you log in again.') }}</span>
+                        <span x-show="!sessionExpired">{{ __("Your score hasn't been saved yet — retrying automatically.") }}</span>
                     </div>
 
                     <div class="mt-6 flex items-center justify-center gap-3">
@@ -230,6 +231,10 @@
                 finalMaxScore: 0,
                 finalPercentage: 0,
                 offlineScoreQueued: false,
+                sessionExpired: false,
+                retryTimer: null,
+                retryDelay: 2000,
+                _flushing: false,
 
                 // Memory Match
                 cards: [],
@@ -274,20 +279,12 @@
                 },
 
                 init() {
-                    // Check for a queued score from a previous offline session
-                    // (e.g. student completed the game while offline, then came back)
-                    this._onlineHandler = () => {
-                        if (this.offlineScoreQueued) {
-                            try {
-                                const queued = JSON.parse(localStorage.getItem(scoreQueueKey) || 'null');
-                                if (queued) {
-                                    this.offlineScoreQueued = false;
-                                    this._sendScore(queued.score, queued.max_score, queued.time_spent_seconds);
-                                }
-                            } catch (e) {}
-                        }
-                    };
+                    this._onlineHandler = () => this.flushScores();
                     window.addEventListener('online', this._onlineHandler);
+
+                    // Send scores queued in an earlier visit (finished offline, or the server was down)
+                    this.offlineScoreQueued = this._readQueue().length > 0;
+                    this.flushScores();
                 },
 
                 startGame() {
@@ -316,41 +313,83 @@
                     this.finalPercentage = maxScore > 0 ? (score / maxScore * 100) : 0;
                     this.state = 'completed';
 
-                    if (!navigator.onLine) {
-                        // Queue the score — will be sent when back online
-                        this.offlineScoreQueued = true;
-                        try {
-                            localStorage.setItem(scoreQueueKey, JSON.stringify({
-                                score, max_score: maxScore, time_spent_seconds: this.elapsed,
-                            }));
-                        } catch (e) {}
-                        return;
-                    }
-                    this._sendScore(score, maxScore, this.elapsed);
+                    // Queue first, then send — the score is only removed once the server confirms it.
+                    // The submission ID lets the server ignore a retry of a play it already recorded.
+                    const queue = this._readQueue();
+                    queue.push({
+                        submission_id: window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+                        score,
+                        max_score: maxScore,
+                        time_spent_seconds: this.elapsed,
+                    });
+                    this._writeQueue(queue);
+                    this.offlineScoreQueued = true;
+                    this.flushScores();
                 },
 
-                _sendScore(score, maxScore, timeSpent) {
-                    fetch(completeUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                        body: JSON.stringify({ score, max_score: maxScore, time_spent_seconds: timeSpent }),
-                    }).then(() => {
-                        try { localStorage.removeItem(scoreQueueKey); } catch (e) {}
+                _readQueue() {
+                    try {
+                        const queued = JSON.parse(localStorage.getItem(scoreQueueKey) || '[]');
+                        // Older versions stored a single score object
+                        return Array.isArray(queued) ? queued : (queued ? [queued] : []);
+                    } catch (e) {
+                        return [];
+                    }
+                },
+
+                _writeQueue(queue) {
+                    try {
+                        if (queue.length) localStorage.setItem(scoreQueueKey, JSON.stringify(queue));
+                        else localStorage.removeItem(scoreQueueKey);
+                    } catch (e) {}
+                },
+
+                // Sends queued scores one at a time. Failures (offline, server errors) are retried
+                // with backoff until the server confirms, so no score is silently dropped.
+                async flushScores() {
+                    if (this._flushing || this.sessionExpired) return;
+                    this._flushing = true;
+
+                    try {
+                        for (const entry of this._readQueue()) {
+                            if (!navigator.onLine) throw new Error('offline');
+
+                            const response = await fetch(completeUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                                body: JSON.stringify(entry),
+                            });
+
+                            if (response.status === 419 || response.status === 401) {
+                                // Session ended — the score stays queued and is sent after the next login
+                                this.sessionExpired = true;
+                                return;
+                            }
+
+                            // 403/422: game closed or invalid score — retrying won't help
+                            if (!response.ok && response.status !== 403 && response.status !== 422) {
+                                throw new Error('Save failed with status ' + response.status);
+                            }
+
+                            this._writeQueue(this._readQueue().filter(q => q.submission_id !== entry.submission_id));
+                        }
+
+                        this.retryDelay = 2000;
                         this.offlineScoreQueued = false;
-                    }).catch(() => {
-                        // Network error after initial online check — re-queue
+                    } catch (e) {
                         this.offlineScoreQueued = true;
-                        try {
-                            localStorage.setItem(scoreQueueKey, JSON.stringify({
-                                score, max_score: maxScore, time_spent_seconds: timeSpent,
-                            }));
-                        } catch (e) {}
-                    });
+                        clearTimeout(this.retryTimer);
+                        this.retryTimer = setTimeout(() => this.flushScores(), this.retryDelay);
+                        this.retryDelay = Math.min(this.retryDelay * 2, 30000);
+                    } finally {
+                        this._flushing = false;
+                    }
                 },
 
                 destroy() {
                     clearInterval(this.timer);
                     clearInterval(this.questionInterval);
+                    clearTimeout(this.retryTimer);
                     if (this._onlineHandler) window.removeEventListener('online', this._onlineHandler);
                 },
 

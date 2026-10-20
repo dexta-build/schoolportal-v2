@@ -6,8 +6,12 @@ namespace Tests\Feature;
 
 use App\Models\School;
 use App\Models\User;
+use App\Notifications\FileUsageAlertNotification;
+use App\Services\FileUsageService;
 use App\Services\SchoolSetupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 /**
@@ -259,6 +263,101 @@ class SuperAdminSystemHealthTest extends TestCase
         $this->assertArrayHasKey('pdo', $extensions);
         $this->assertArrayHasKey('mbstring', $extensions);
         $this->assertArrayHasKey('openssl', $extensions);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // File Usage (hosting inode limit)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_file_usage_shows_not_scanned_state(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->get(route('super-admin.system-health'))
+            ->assertOk()
+            ->assertSee('Hosting File Usage')
+            ->assertSee('health:file-usage');
+    }
+
+    public function test_file_usage_command_counts_files_and_folders(): void
+    {
+        $root = $this->makeFileTree();
+        config(['services.platform.file_usage_path' => $root, 'services.platform.file_limit' => 100]);
+
+        $this->artisan('health:file-usage')->assertSuccessful();
+
+        $usage = app(FileUsageService::class)->latest();
+
+        // mail/ (1) + mail/new/ (1) + 3 files = 5; app/ (1) + 1 file = 2; top-level file = 1
+        $this->assertSame(8, $usage['total']);
+        $this->assertSame(8.0, $usage['percent']);
+        $this->assertSame(['mail' => 5, 'app' => 2, 'notes.txt' => 1], $usage['folders']);
+
+        $this->actingAs($this->superAdmin)
+            ->get(route('super-admin.system-health'))
+            ->assertOk()
+            ->assertSee('8 / 100')
+            ->assertSee('mail');
+
+        File::deleteDirectory($root);
+    }
+
+    public function test_file_usage_alert_is_sent_once_per_day_when_over_threshold(): void
+    {
+        Notification::fake();
+
+        $root = $this->makeFileTree();
+        config([
+            'services.platform.file_usage_path' => $root,
+            'services.platform.file_limit' => 10,
+            'services.platform.alert_email' => 'alerts@schoolportal.test',
+        ]);
+
+        $this->artisan('health:file-usage')->assertSuccessful();
+        $this->artisan('health:file-usage')->assertSuccessful();
+
+        Notification::assertSentOnDemandTimes(FileUsageAlertNotification::class, 1);
+
+        $this->actingAs($this->superAdmin)
+            ->get(route('super-admin.system-health'))
+            ->assertOk()
+            ->assertSee('Critical');
+
+        File::deleteDirectory($root);
+    }
+
+    public function test_file_usage_no_alert_when_under_threshold(): void
+    {
+        Notification::fake();
+
+        $root = $this->makeFileTree();
+        config([
+            'services.platform.file_usage_path' => $root,
+            'services.platform.file_limit' => 600000,
+            'services.platform.alert_email' => 'alerts@schoolportal.test',
+        ]);
+
+        $this->artisan('health:file-usage')->assertSuccessful();
+
+        Notification::assertNothingSent();
+
+        File::deleteDirectory($root);
+    }
+
+    private function makeFileTree(): string
+    {
+        $root = storage_path('framework/testing/file-usage-'.uniqid());
+
+        File::ensureDirectoryExists($root.'/mail/new');
+        File::ensureDirectoryExists($root.'/app');
+
+        foreach (['a', 'b', 'c'] as $name) {
+            File::put($root."/mail/new/{$name}", 'x');
+        }
+
+        File::put($root.'/app/index.php', 'x');
+        File::put($root.'/notes.txt', 'x');
+
+        return $root;
     }
 
     public function test_paths_array_contains_storage_path(): void

@@ -14,6 +14,7 @@ use App\Models\StudentProfile;
 use App\Models\Term;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\Concerns\WithSchoolContext;
 use Tests\TestCase;
 
@@ -282,6 +283,124 @@ class StudentQuizTest extends TestCase
         $this->actingAs($this->student)
             ->get(route('student.quizzes.results', $attempt))
             ->assertOk();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Timer & answer-save resilience
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_json_save_returns_saved_status(): void
+    {
+        $attempt = $this->startAttempt();
+
+        $this->actingAs($this->student)
+            ->postJson(route('student.quizzes.save-answer', $attempt), [
+                'question_id' => $this->question->id,
+                'selected_answer' => '4',
+            ])
+            ->assertOk()
+            ->assertJson(['status' => 'saved']);
+    }
+
+    public function test_submit_just_after_time_limit_keeps_answers_sent_with_it(): void
+    {
+        $this->quiz->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+
+        // The browser's auto-submit at 00:00 arrives a few seconds late
+        $this->travel(10 * 60 + 30)->seconds();
+
+        $this->actingAs($this->student)
+            ->post(route('student.quizzes.submit', $attempt), ['answers' => [$this->question->id => '4']])
+            ->assertRedirect(route('student.quizzes.results', $attempt));
+
+        $attempt->refresh();
+        $this->assertSame('timed_out', $attempt->status);
+        $this->assertSame(1, $attempt->score);
+    }
+
+    public function test_submit_after_grace_period_ignores_answers_sent_with_it(): void
+    {
+        $this->quiz->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+
+        $this->travel(10 * 60 + QuizAttempt::LATE_ANSWER_GRACE_SECONDS + 60)->seconds();
+
+        $this->actingAs($this->student)
+            ->post(route('student.quizzes.submit', $attempt), ['answers' => [$this->question->id => '4']])
+            ->assertRedirect(route('student.quizzes.results', $attempt));
+
+        $attempt->refresh();
+        $this->assertSame('timed_out', $attempt->status);
+        $this->assertSame(0, $attempt->score);
+    }
+
+    public function test_retried_save_within_grace_period_is_kept_and_auto_submits(): void
+    {
+        $this->quiz->update(['time_limit_minutes' => 10]);
+        $attempt = $this->startAttempt();
+
+        $this->travel(10 * 60 + 20)->seconds();
+
+        $this->actingAs($this->student)
+            ->postJson(route('student.quizzes.save-answer', $attempt), [
+                'question_id' => $this->question->id,
+                'selected_answer' => '4',
+            ])
+            ->assertOk()
+            ->assertJson(['status' => 'timed_out']);
+
+        $attempt->refresh();
+        $this->assertSame('timed_out', $attempt->status);
+        $this->assertSame(1, $attempt->score);
+    }
+
+    public function test_saving_answer_survives_cache_failure(): void
+    {
+        $attempt = $this->startAttempt();
+
+        // Fail only the quiz question-ids cache write, like the "Disk quota exceeded" incident
+        Cache::partialMock()
+            ->shouldReceive('remember')
+            ->andReturnUsing(function (string $key, mixed $ttl, \Closure $callback): mixed {
+                if (str_starts_with($key, 'quiz_')) {
+                    throw new \ErrorException('file_put_contents(): Failed to open stream: Disk quota exceeded');
+                }
+
+                return $callback();
+            });
+
+        $this->actingAs($this->student)
+            ->postJson(route('student.quizzes.save-answer', $attempt), [
+                'question_id' => $this->question->id,
+                'selected_answer' => '4',
+            ])
+            ->assertOk()
+            ->assertJson(['status' => 'saved']);
+
+        $this->assertDatabaseHas('quiz_answers', ['attempt_id' => $attempt->id, 'selected_answer' => '4']);
+    }
+
+    public function test_results_for_in_progress_attempt_redirects_to_take_page(): void
+    {
+        $attempt = $this->startAttempt();
+
+        $this->actingAs($this->student)
+            ->get(route('student.quizzes.results', $attempt))
+            ->assertRedirect(route('student.quizzes.take', $attempt));
+    }
+
+    /**
+     * Start through the controller so started_at is written in the same timezone the requests use.
+     */
+    private function startAttempt(): QuizAttempt
+    {
+        $this->actingAs($this->student)->post(route('student.quizzes.start', $this->quiz));
+
+        return QuizAttempt::where('quiz_id', $this->quiz->id)
+            ->where('student_id', $this->student->id)
+            ->where('status', 'in_progress')
+            ->firstOrFail();
     }
 
     public function test_teacher_cannot_access_student_quiz_routes(): void
