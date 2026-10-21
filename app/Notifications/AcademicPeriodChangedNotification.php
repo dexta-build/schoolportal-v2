@@ -41,7 +41,13 @@ class AcademicPeriodChangedNotification extends DatabaseNotification
         return [
             'icon' => $this->icon(),
             'message' => $this->message(),
-            'action_url' => $this->actionUrl(),
+            // Sent to every role — each goes to their own dashboard
+            'action_url' => match ($notifiable->role ?? 'student') {
+                'school_admin' => url('/portal/admin/dashboard'),
+                'teacher' => url('/portal/teacher/dashboard'),
+                'parent' => url('/portal/parent/dashboard'),
+                default => $this->actionUrl(),
+            },
             'type_label' => $this->typeLabel(),
             'period_type' => $this->periodType,
             'period_name' => $this->name,

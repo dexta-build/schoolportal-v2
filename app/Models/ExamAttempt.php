@@ -127,7 +127,7 @@ class ExamAttempt extends Model
         $times = [];
 
         if ($this->exam->time_limit_minutes) {
-            $times[] = $this->started_at->copy()->addMinutes($this->exam->time_limit_minutes);
+            $times[] = $this->started_at->copy()->addMinutes((int) $this->exam->time_limit_minutes);
         }
 
         $deadline = $this->accessReset?->available_until ?? $this->exam->available_until;

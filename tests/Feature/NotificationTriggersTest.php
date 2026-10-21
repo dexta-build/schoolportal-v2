@@ -157,7 +157,8 @@ class NotificationTriggersTest extends TestCase
         $notification = new DeadlineReminderNotification('quiz', 'Science Quiz', 3, 'May 21 at 9:00 AM', 'student');
         $data = $notification->toArray($this->admin);
 
-        $this->assertStringContainsString('quizzes/3', $data['action_url']);
+        // Students have no per-quiz page — the reminder opens their quiz list
+        $this->assertSame(url('/portal/student/quizzes'), $data['action_url']);
     }
 
     // ── Academic Period Changed Notification ──────────────────────────────

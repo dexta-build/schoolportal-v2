@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Services\GradingScaleResolver;
 use App\Services\NotificationService;
 use App\Services\ScoreAggregationService;
+use App\Services\ScoreCorrectionService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -162,6 +163,10 @@ class ScoreController extends Controller
             }
         });
 
+        if ($updated > 0) {
+            app(ScoreCorrectionService::class)->markReportsStale($class->id, $term->id);
+        }
+
         return redirect()->back()->with('success', "{$updated} scores saved successfully.");
     }
 
@@ -175,11 +180,9 @@ class ScoreController extends Controller
             'term_id' => 'required|exists:terms,id',
         ]);
 
-        StudentSubjectScore::where('class_id', $request->class_id)
-            ->where('term_id', $request->term_id)
-            ->update(['is_locked' => true]);
+        $count = app(ScoreCorrectionService::class)->lockClass((int) $request->class_id, (int) $request->term_id, auth()->user());
 
-        return redirect()->back()->with('success', 'All scores locked for this class/term.');
+        return redirect()->back()->with('success', "{$count} scores locked for this class/term.");
     }
 
     /**

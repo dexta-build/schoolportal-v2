@@ -408,6 +408,7 @@ Route::prefix('portal')->group(function () {
             Route::get('notices', [TeacherNoticeController::class, 'index'])->name('teacher.notices.index');
             Route::get('notices/create', [TeacherNoticeController::class, 'create'])->name('teacher.notices.create');
             Route::post('notices', [TeacherNoticeController::class, 'store'])->name('teacher.notices.store');
+            Route::get('notices/{notice}', [TeacherNoticeController::class, 'show'])->name('teacher.notices.show');
             Route::get('notices/{notice}/edit', [TeacherNoticeController::class, 'edit'])->name('teacher.notices.edit');
             Route::put('notices/{notice}', [TeacherNoticeController::class, 'update'])->name('teacher.notices.update');
             Route::post('notices/{notice}/unpublish', [TeacherNoticeController::class, 'unpublish'])->name('teacher.notices.unpublish');

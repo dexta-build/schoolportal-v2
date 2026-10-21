@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
+use App\Helpers\PortalUrl;
 use App\Models\TeacherAction;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -34,6 +35,7 @@ class SubmissionPendingApproval extends Notification implements ShouldQueue
             'quiz' => 'Quiz',
             'game' => 'Educational Game',
             'report_card' => 'Report Card',
+            'score_amendment' => 'Score Correction',
             default => ucfirst($this->action->entity_type),
         };
 
@@ -44,7 +46,7 @@ class SubmissionPendingApproval extends Notification implements ShouldQueue
                 'teacher' => $this->teacherName,
                 'type' => strtolower($typeLabel),
             ]))
-            ->action(__('Review Submissions'), url('/portal/admin/approvals'))
+            ->action(__('Review Submissions'), PortalUrl::forRecipient($notifiable, '/portal/admin/approvals'))
             ->line(__('Please review and approve or reject this submission.'))
             ->salutation(__('Regards, DX-SchoolPortal'));
     }

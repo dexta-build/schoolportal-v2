@@ -10,6 +10,7 @@ use App\Models\Result;
 use App\Models\StudentProfile;
 use App\Models\Term;
 use App\Models\User;
+use App\Services\CsvImportService;
 use App\Services\FileUploadService;
 use App\Services\TempUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -140,6 +141,21 @@ class TempUploadSecurityTest extends TestCase
             ->assertRedirect(route('admin.students.index'));
 
         Queue::assertPushed(ImportStudentsCsvJob::class);
+    }
+
+    public function test_import_job_does_not_leave_its_school_bound_for_the_next_queued_job(): void
+    {
+        $batch = app(TempUploadService::class)->newBatch(TempUploadService::TYPE_STUDENT_IMPORT, $this->school->id);
+        Storage::disk('local')->put("{$batch}/students.csv", "name,username,gender,class\nAda Obi,ada.obi,female,{$this->class->name}\n");
+
+        // A queue worker process starts with no school bound
+        app()->forgetInstance('current.school');
+
+        (new ImportStudentsCsvJob($this->school->id, "{$batch}/students.csv", 'Secret123', 'test-key'))
+            ->handle(app(CsvImportService::class));
+
+        $this->assertFalse(app()->bound('current.school'), 'The next job in the same worker must not inherit this school');
+        $this->assertTrue(User::withoutGlobalScopes()->where('username', 'ada.obi')->exists());
     }
 
     public function test_belongs_to_only_accepts_the_schools_own_batch_files(): void

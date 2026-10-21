@@ -45,6 +45,9 @@ class School extends Model
     {
         return [
             'settings' => 'array',
+            'ai_free_credits' => 'integer',
+            'ai_purchased_credits' => 'integer',
+            'ai_credits_total_purchased' => 'integer',
             'is_active' => 'boolean',
             'deactivated_at' => 'datetime',
             'domain_verified_at' => 'datetime',

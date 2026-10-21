@@ -11,6 +11,7 @@ use App\Models\Notice;
 use App\Models\Quiz;
 use App\Models\Result;
 use App\Models\School;
+use App\Models\ScoreAmendment;
 use App\Models\StudentTermReport;
 use App\Models\User;
 use App\Notifications\AcademicPeriodChangedNotification;
@@ -24,6 +25,7 @@ use App\Notifications\NewQuizNotification;
 use App\Notifications\NewResultNotification;
 use App\Notifications\NewSchoolNotification;
 use App\Notifications\ReportCardPublishedNotification;
+use App\Notifications\ReportCardRevisedNotification;
 use App\Notifications\SubmissionApprovedNotification;
 use App\Notifications\SubmissionRejectedNotification;
 use Illuminate\Support\Facades\Notification;
@@ -51,8 +53,8 @@ class NotificationService
             recipientRole: 'student',
         ));
 
-        // Notify the student's parents
-        $parents = $student->parents()->get();
+        // Notify the student's parents (parentUsers — parents() is the link table, not users)
+        $parents = $student->parentUsers()->where('users.is_active', true)->get();
         foreach ($parents as $parent) {
             $parent->notify(new NewResultNotification(
                 studentName: $student->name,
@@ -281,6 +283,43 @@ class NotificationService
     }
 
     /**
+     * Notify a student and their parents that a published report card was corrected.
+     */
+    public function notifyReportCardRevised(StudentTermReport $report): void
+    {
+        $report->loadMissing([
+            'student' => fn ($q) => $q->withoutGlobalScopes(),
+            'session' => fn ($q) => $q->withoutGlobalScopes(),
+            'term' => fn ($q) => $q->withoutGlobalScopes(),
+        ]);
+
+        $student = $report->student;
+        if (! $student) {
+            return;
+        }
+
+        $details = [
+            'studentName' => $student->name,
+            'sessionName' => $report->session?->name ?? '',
+            'termName' => $report->term?->name ?? __('Session'),
+            'reportId' => $report->id,
+        ];
+
+        $student->notify(new ReportCardRevisedNotification(...$details, recipientRole: 'student'));
+
+        $parents = User::withoutGlobalScopes()
+            ->where('school_id', $student->school_id)
+            ->where('role', 'parent')
+            ->where('is_active', true)
+            ->whereHas('children', fn ($q) => $q->where('student_id', $student->id))
+            ->get();
+
+        foreach ($parents as $parent) {
+            $parent->notify(new ReportCardRevisedNotification(...$details, recipientRole: 'parent'));
+        }
+    }
+
+    /**
      * Notify teacher that their submission was approved.
      */
     public function notifySubmissionApproved(User $teacher, string $entityType, string $entityTitle): void
@@ -366,6 +405,9 @@ class NotificationService
             'game' => Game::find($entityId)?->title ?? __('Game'),
             'exam' => Exam::find($entityId)?->title ?? __('Exam'),
             'report_card' => StudentTermReport::with('student:id,name')->find($entityId)?->student?->name ?? __('Report Card'),
+            'score_amendment' => ($amendment = ScoreAmendment::with(['student:id,name', 'subject:id,name'])->find($entityId))
+                ? "{$amendment->student?->name} — {$amendment->subject?->name}"
+                : __('Score correction'),
             default => ucfirst($entityType),
         };
     }

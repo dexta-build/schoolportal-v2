@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Helpers\PortalUrl;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -72,10 +73,10 @@ class NotificationBell extends Component
 
         if ($notification) {
             $notification->markAsRead();
-            $actionUrl = $notification->data['action_url'] ?? '#';
             $this->loadNotifications();
 
-            return $actionUrl;
+            // Stay on the domain the user is on (links are stored with the platform domain)
+            return PortalUrl::local($notification->data['action_url'] ?? null);
         }
 
         return '#';

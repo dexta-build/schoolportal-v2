@@ -129,6 +129,8 @@
             </flux:toast.group>
         @endpersist
 
+        <x-page-expired-dialog />
+
         {{-- ── Offline Banner (student only) ─────────────────────────────────── --}}
         @auth
             @if (auth()->user()?->role === 'student')

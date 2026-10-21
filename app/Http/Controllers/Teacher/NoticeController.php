@@ -42,6 +42,29 @@ class NoticeController extends Controller
         return view('teacher.notices.index', compact('notices', 'rejectionReasons'));
     }
 
+    /**
+     * Read a school notice addressed to teachers (opened from a notification).
+     */
+    public function show(Notice $notice): View
+    {
+        $teacher = auth()->user();
+        $targetRoles = $notice->target_roles;
+
+        abort_unless(
+            (int) $notice->created_by === (int) $teacher->id
+            || (
+                $notice->is_published
+                && ($notice->expires_at === null || $notice->expires_at->gte(now()))
+                && (empty($targetRoles) || in_array('teacher', $targetRoles, true))
+            ),
+            404
+        );
+
+        $notice->load('creator:id,name');
+
+        return view('teacher.notices.show', compact('notice'));
+    }
+
     public function create(): View
     {
         $teacher = auth()->user();

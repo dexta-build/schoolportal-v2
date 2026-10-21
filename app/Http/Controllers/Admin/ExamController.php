@@ -98,6 +98,8 @@ class ExamController extends Controller
             'category' => $this->resolveCategory(),
             'categoryLabel' => $this->categoryLabel(),
             'routePrefix' => $this->routePrefix(),
+            // The theory grader (bulk-grade / grade-student) needs to know who is grading
+            'role' => 'admin',
         ];
     }
 

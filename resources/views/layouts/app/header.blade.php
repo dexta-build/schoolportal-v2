@@ -79,6 +79,8 @@
             </flux:toast.group>
         @endpersist
 
+        <x-page-expired-dialog />
+
         @fluxScripts
         @stack('scripts')
     </body>

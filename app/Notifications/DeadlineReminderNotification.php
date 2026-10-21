@@ -38,8 +38,17 @@ class DeadlineReminderNotification extends DatabaseNotification
 
     protected function actionUrl(): string
     {
+        if ($this->recipientRole === 'parent') {
+            return match ($this->contentType) {
+                'quiz' => url('/portal/parent/quizzes'),
+                'exam' => url('/portal/parent/cbt'),
+                default => url('/portal/parent/dashboard'),
+            };
+        }
+
         return match ($this->contentType) {
-            'quiz' => url("/portal/student/quizzes/{$this->entityId}"),
+            // Quizzes have no per-quiz page for students — the list is where they start one
+            'quiz' => url('/portal/student/quizzes'),
             'exam' => url("/portal/student/exams/{$this->entityId}"),
             default => url('/portal/student/dashboard'),
         };

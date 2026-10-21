@@ -523,3 +523,18 @@ if ('serviceWorker' in navigator && document.querySelector('link[rel="manifest"]
         });
     });
 }
+
+/*
+ * Livewire answers an expired session (and, in production, some server errors) with HTTP 419
+ * and shows a browser confirm() box. Show the app's own dialog instead.
+ */
+document.addEventListener('livewire:init', () => {
+    window.Livewire.interceptRequest(({ onError }) => {
+        onError(({ response, preventDefault }) => {
+            if (response?.status !== 419) return;
+
+            preventDefault();
+            window.dispatchEvent(new CustomEvent('livewire-page-expired'));
+        });
+    });
+});

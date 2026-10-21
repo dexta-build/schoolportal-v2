@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Helpers\PortalUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -38,7 +39,8 @@ class NotificationController extends Controller
         $actionUrl = $notification->data['action_url'] ?? null;
 
         if ($actionUrl) {
-            return redirect($actionUrl);
+            // Stay on the domain the user is on (links are stored with the platform domain)
+            return redirect(PortalUrl::local($actionUrl));
         }
 
         return back();

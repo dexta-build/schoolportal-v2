@@ -68,6 +68,7 @@ class Exam extends Model
             'created_by' => 'integer',
             'approved_by' => 'integer',
             'max_score' => 'integer',
+            'time_limit_minutes' => 'integer',
             'passing_score' => 'integer',
             'max_attempts' => 'integer',
             'max_tab_switches' => 'integer',
