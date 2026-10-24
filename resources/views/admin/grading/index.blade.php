@@ -1,9 +1,9 @@
-<x-layouts::app :title="__('Grading Setup')">
+<x-layouts::app :title="__('Grading & Score Setup')">
     <div class="space-y-6">
         <x-score-workflow-steps current="grading" />
 
         <x-admin-header
-            :title="__('Grading Setup')"
+            :title="__('Grading & Score Setup')"
             :description="__('Configure grading scales, score components, and report card options.')"
         />
 
@@ -78,7 +78,7 @@
                                                     {{ __('Assign') }}
                                                 </flux:button>
                                             </flux:modal.trigger>
-                                            <flux:button variant="subtle" size="xs" icon="pencil" href="{{ route('admin.grading.scales.edit', $scale) }}" wire:navigate aria-label="{{ __('Edit') }}" />
+                                            <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.grading.scales.edit', $scale) }}" wire:navigate>{{ __('Edit') }}</flux:button>
                                         </div>
                                     </div>
 
@@ -139,12 +139,13 @@
                                         @endunless
 
                                         @if ($canDelete)
-                                            <form method="POST" action="{{ route('admin.grading.scales.destroy', $scale) }}" class="inline">
-                                                @csrf @method('DELETE')
-                                                <flux:button variant="subtle" size="xs" icon="trash" type="submit" aria-label="{{ __('Delete') }}" />
-                                            </form>
-                                        @else
-                                            <flux:button variant="subtle" size="xs" icon="trash" disabled aria-label="{{ __('Cannot delete') }}" />
+                                            <x-confirm-delete
+                                                :action="route('admin.grading.scales.destroy', $scale)"
+                                                :title="__('Delete :name?', ['name' => $scale->name])"
+                                                :message="__('This grading scale is not used by any level. Deleting it cannot be undone.')"
+                                                :buttonLabel="__('Delete')"
+                                                :ariaLabel="__('Delete :name', ['name' => $scale->name])"
+                                            />
                                         @endif
                                     </div>
                                 </div>

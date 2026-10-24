@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\UndoableDeletes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SchoolAnnouncement extends Model
 {
+    use UndoableDeletes;
+
     protected $fillable = [
         'school_id',
         'title',
@@ -25,6 +28,8 @@ class SchoolAnnouncement extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
+            'created_by' => 'integer',
             'target_roles' => 'array',
             'is_active' => 'boolean',
             'starts_at' => 'datetime',
@@ -69,5 +74,15 @@ class SchoolAnnouncement extends Model
             $q->whereNull('target_roles')
                 ->orWhereJsonContains('target_roles', $role);
         });
+    }
+
+    public function undoableTitle(): string
+    {
+        return $this->title;
+    }
+
+    protected function undoableFileColumns(): array
+    {
+        return [];
     }
 }

@@ -62,8 +62,12 @@
             <flux:button
                 variant="danger"
                 size="sm"
-                wire:click="forceEndAll"
-                wire:confirm="{{ __('Force-end the exam for ALL :n in-progress students? This cannot be undone.', ['n' => $summary['in_progress']]) }}"
+                x-on:click="appConfirm({
+                    title: {{ Js::from(__('End the exam for everyone?')) }},
+                    message: {{ Js::from(__('All :n students still writing will be stopped now and their answers graded. This cannot be undone.', ['n' => $summary['in_progress']])) }},
+                    confirmLabel: {{ Js::from(__('End exam for all')) }},
+                    variant: 'danger',
+                }).then(ok => ok && $wire.forceEndAll())"
             >
                 <flux:icon.x-circle class="size-4 mr-1" />
                 {{ __('End Exam for All') }}
@@ -165,8 +169,12 @@
                                         variant="ghost"
                                         size="sm"
                                         class="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                                        wire:click="forceEnd({{ $student->id }})"
-                                        wire:confirm="{{ __('Force-end the exam for :name? They will be marked as Timed Out and their current answers will be graded.', ['name' => $student->name]) }}"
+                                        x-on:click="appConfirm({
+                                            title: {{ Js::from(__('End the exam for :name?', ['name' => $student->name])) }},
+                                            message: {{ Js::from(__('They will be stopped now, marked as Timed Out, and their current answers graded.')) }},
+                                            confirmLabel: {{ Js::from(__('End exam')) }},
+                                            variant: 'danger',
+                                        }).then(ok => ok && $wire.forceEnd({{ $student->id }}))"
                                     >
                                         <flux:icon.x-circle class="size-4 mr-1" />
                                         {{ __('End') }}

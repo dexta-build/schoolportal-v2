@@ -39,6 +39,10 @@ class QuestionBank extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
+            'subject_id' => 'integer',
+            'class_id' => 'integer',
+            'created_by' => 'integer',
             'options' => 'array',
             'tags' => 'array',
             'points' => 'integer',

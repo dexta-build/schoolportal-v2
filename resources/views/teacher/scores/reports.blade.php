@@ -7,7 +7,8 @@
                 <h1 class="text-2xl font-bold text-zinc-900 dark:text-white">{{ __('Term Reports') }}</h1>
                 <p class="text-sm text-zinc-500">{{ __('Add comments and submit report cards for approval.') }}</p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="report-cards" />
                 @if ($selectedClassId && $selectedTermId)
                     <flux:button variant="subtle" size="sm" icon="pencil-square" href="{{ route('teacher.scores.reports.bulk-edit-data', ['class_id' => $selectedClassId, 'term_id' => $selectedTermId]) }}" wire:navigate>
                         {{ __('Bulk Edit Report Data') }}
@@ -194,13 +195,13 @@
                                         {{ ucwords(str_replace('_', ' ', $report->report_type)) }}
                                     </flux:badge>
                                 @endif
-                                @if (!in_array($report->status, ['approved', 'published']))
-                                    <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('teacher.scores.reports.edit-data', $report) }}" wire:navigate />
-                                @endif
-                                <flux:button variant="subtle" size="xs" icon="eye" href="{{ route('teacher.scores.reports.show', $report) }}" wire:navigate />
-                                <a href="{{ route('teacher.scores.reports.download', $report) }}">
-                                    <flux:button variant="subtle" size="xs" icon="arrow-down-tray" />
-                                </a>
+                                <x-row-actions :label="__('Actions for :name\'s report card', ['name' => $report->student->name ?? __('student')])">
+                                    <flux:menu.item icon="eye" href="{{ route('teacher.scores.reports.show', $report) }}" wire:navigate>{{ __('View report card') }}</flux:menu.item>
+                                    @if (!in_array($report->status, ['approved', 'published']))
+                                        <flux:menu.item icon="pencil-square" href="{{ route('teacher.scores.reports.edit-data', $report) }}" wire:navigate>{{ __('Edit comments & attendance') }}</flux:menu.item>
+                                    @endif
+                                    <flux:menu.item icon="arrow-down-tray" href="{{ route('teacher.scores.reports.download', $report) }}">{{ __('Download PDF') }}</flux:menu.item>
+                                </x-row-actions>
                             </div>
                         </div>
 

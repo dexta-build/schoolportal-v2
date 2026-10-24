@@ -1,7 +1,7 @@
-<x-layouts::app :title="__('My Uploaded Results')">
+<x-layouts::app :title="__('My Result Sheets (PDF)')">
     <div class="space-y-6">
         <x-admin-header
-            :title="__('My Uploaded Results')"
+            :title="__('My Result Sheets (PDF)')"
             :action="route('teacher.results.create')"
             :actionLabel="__('Upload Result')"
             actionIcon="arrow-up-tray"
@@ -70,7 +70,7 @@
                         <flux:table.cell class="hidden sm:table-cell text-zinc-500">{{ $result->created_at->format('M j, Y') }}</flux:table.cell>
                         <flux:table.cell>
                             @if ($result->status !== 'approved')
-                                <flux:button variant="subtle" size="xs" icon="pencil" href="{{ route('teacher.results.edit', $result) }}" wire:navigate />
+                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('teacher.results.edit', $result) }}" wire:navigate>{{ __('Edit') }}</flux:button>
                             @endif
                         </flux:table.cell>
                     </flux:table.row>

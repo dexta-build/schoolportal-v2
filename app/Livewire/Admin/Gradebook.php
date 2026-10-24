@@ -9,6 +9,7 @@ use App\Models\SchoolClass;
 use App\Models\SchoolLevel;
 use App\Models\ScoreAmendment;
 use App\Models\ScoreComponent;
+use App\Models\StudentProfile;
 use App\Models\StudentSubjectScore;
 use App\Models\StudentTermReport;
 use App\Models\Term;
@@ -29,6 +30,12 @@ class Gradebook extends Component
     public ?int $classId = null;
 
     public ?int $termId = null;
+
+    // Show one subject at a time (picked automatically on phones, where the full grid is too wide)
+    public ?int $subjectId = null;
+
+    // Set by the browser on small screens: keep a subject picked when the class changes
+    public bool $oneSubjectMode = false;
 
     // Rendered grid data (plain arrays for Livewire serialisation)
     public array $grid = [];
@@ -96,6 +103,16 @@ class Gradebook extends Component
         if ($currentTerm) {
             $this->termId = $currentTerm->id;
         }
+
+        // Opened from a link (e.g. the End of Term checklist): start on that class and term.
+        // canAccessClass() inside loadGrid() still decides whether this user may see it.
+        if (request()->integer('term_id')) {
+            $this->termId = request()->integer('term_id');
+        }
+        if (request()->integer('class_id')) {
+            $this->classId = request()->integer('class_id');
+            $this->loadGrid();
+        }
     }
 
     // ── Watchers ─────────────────────────────────────────────────────────────
@@ -112,6 +129,31 @@ class Gradebook extends Component
         $this->successMessage = null;
         $this->errorMessage = null;
         $this->loadGrid();
+    }
+
+    /**
+     * Called from the browser on phones, where all subjects side by side are too wide to use.
+     */
+    public function useOneSubjectMode(): void
+    {
+        $this->oneSubjectMode = true;
+        $this->pickVisibleSubject();
+    }
+
+    /**
+     * Keep the chosen subject valid for the loaded class. In one-subject mode, fall back to the first subject.
+     */
+    private function pickVisibleSubject(): void
+    {
+        $ids = array_column($this->subjects, 'id');
+
+        if ($this->subjectId && ! in_array($this->subjectId, $ids, true)) {
+            $this->subjectId = null;
+        }
+
+        if ($this->oneSubjectMode && ! $this->subjectId && $ids !== []) {
+            $this->subjectId = $ids[0];
+        }
     }
 
     // ── Data Loading ─────────────────────────────────────────────────────────
@@ -137,18 +179,11 @@ class Gradebook extends Component
 
         $school = app('current.school');
 
-        // Teachers can only access their own class
-        if ($this->role === 'teacher') {
-            $allowed = SchoolClass::where('teacher_id', auth()->id())
-                ->where('id', $this->classId)
-                ->where('school_id', $school->id)
-                ->exists();
+        // Admins: any class in their school. Teachers: only their own class.
+        if (! $this->canAccessClass()) {
+            $this->errorMessage = 'You do not have access to this class.';
 
-            if (! $allowed) {
-                $this->errorMessage = 'You do not have access to this class.';
-
-                return;
-            }
+            return;
         }
 
         /** @var ScoreAggregationService $service */
@@ -171,6 +206,8 @@ class Gradebook extends Component
 
         $this->grid = $data['students'];
         $this->studentCount = count($this->grid);
+
+        $this->pickVisibleSubject();
 
         // Completion stats
         $numComps = count($this->components);
@@ -262,22 +299,31 @@ class Gradebook extends Component
         return $this->role === 'admin' && auth()->user()?->role === 'school_admin';
     }
 
+    /**
+     * classId and termId come from the browser, so both must belong to this school —
+     * and for teachers, the class must be theirs.
+     */
     private function canAccessClass(): bool
     {
         if (! $this->classId || ! $this->termId) {
             return false;
         }
 
+        $schoolId = app('current.school')->id;
+
+        if (! Term::withoutGlobalScopes()->where('school_id', $schoolId)->whereKey($this->termId)->exists()) {
+            return false;
+        }
+
+        $class = SchoolClass::withoutGlobalScope('tenant')->where('school_id', $schoolId)->whereKey($this->classId);
+
         if ($this->isSchoolAdmin()) {
-            return true;
+            return $class->exists();
         }
 
         return $this->role === 'teacher'
             && auth()->user()?->role === 'teacher'
-            && SchoolClass::where('teacher_id', auth()->id())
-                ->where('id', $this->classId)
-                ->where('school_id', app('current.school')->id)
-                ->exists();
+            && $class->where('teacher_id', auth()->id())->exists();
     }
 
     private function clearMessages(): void
@@ -565,10 +611,24 @@ class Gradebook extends Component
             ->get()
             ->keyBy('id');
 
+        // The changes come from the browser — only accept students enrolled in this class for
+        // this term, and subjects taught in this class
+        $classStudentIds = StudentProfile::withoutGlobalScopes()
+            ->where('school_id', $school->id)
+            ->where('class_id', $this->classId)
+            ->enrolledByTerm($term->loadMissing(['session' => fn ($q) => $q->withoutGlobalScopes()]))
+            ->pluck('user_id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+        $classSubjectIds = SchoolClass::withoutGlobalScopes()->findOrFail($this->classId)
+            ->subjects()->withoutGlobalScopes()->pluck('subjects.id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
         $updated = 0;
         $skipped = 0;
 
-        DB::transaction(function () use ($changes, $school, $term, $user, $componentMap, &$updated, &$skipped) {
+        DB::transaction(function () use ($changes, $school, $term, $user, $componentMap, $classStudentIds, $classSubjectIds, &$updated, &$skipped) {
             foreach ($changes as $change) {
                 $studentId = (int) ($change['student_id'] ?? 0);
                 $subjectId = (int) ($change['subject_id'] ?? 0);
@@ -576,6 +636,10 @@ class Gradebook extends Component
                 $score = $change['score'] ?? '';
 
                 if ($studentId === 0 || $subjectId === 0 || $componentId === 0) {
+                    continue;
+                }
+
+                if (! in_array($studentId, $classStudentIds, true) || ! in_array($subjectId, $classSubjectIds, true)) {
                     continue;
                 }
 

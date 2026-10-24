@@ -99,6 +99,20 @@ class ResultController extends Controller
             ]);
         }
 
+        // One result sheet per student per term — checked before uploading to save a wasted Cloudinary call
+        $alreadyExists = Result::where('student_id', $validated['student_id'])
+            ->where('session_id', $validated['session_id'])
+            ->where('term_id', $validated['term_id'])
+            ->exists();
+
+        if ($alreadyExists) {
+            return redirect()->back()->withInput()->withErrors([
+                'student_id' => __('This student already has a result sheet for that term. Edit it to replace the PDF.'),
+            ]);
+        }
+
+        Result::releaseDeletedSlot((int) $validated['student_id'], (int) $validated['session_id'], (int) $validated['term_id']);
+
         $school = app('current.school');
         $upload = app(FileUploadService::class)->uploadResult($request->file('result_file'), $school->id);
 

@@ -2,7 +2,7 @@
     <div class="space-y-6">
         <x-admin-header :title="__('Upload Result')">
             <flux:button variant="subtle" size="sm" href="{{ route('teacher.results.index') }}" wire:navigate icon="arrow-left">
-                {{ __('Back to Uploaded Results') }}
+                {{ __('Back to Result Sheets') }}
             </flux:button>
         </x-admin-header>
 

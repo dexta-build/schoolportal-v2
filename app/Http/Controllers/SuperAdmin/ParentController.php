@@ -133,13 +133,6 @@ class ParentController extends Controller
             ]));
     }
 
-    public function destroy(User $parent): RedirectResponse
-    {
-        abort_unless($parent->role === 'parent', 404);
-
-        $parent->delete();
-
-        return redirect()->route('super-admin.parents.index')
-            ->with('success', __('Parent deleted.'));
-    }
+    // No destroy: a school's parents are the school's own records. The platform can't delete
+    // them, so no school can say its records were changed by the platform.
 }

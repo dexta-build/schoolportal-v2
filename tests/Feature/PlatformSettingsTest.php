@@ -312,4 +312,57 @@ class PlatformSettingsTest extends TestCase
         $this->assertArrayHasKey('max_upload_size_mb', $all);
         $this->assertArrayHasKey('credit_price_per_5', $all);
     }
+
+    public function test_saving_another_section_keeps_the_feature_flag_defaults(): void
+    {
+        PlatformSetting::set('feature_default_enable_parent_portal', true);
+        PlatformSetting::set('feature_default_enable_quiz_generator', true);
+
+        // The Platform Identity form carries no feature-flag checkboxes
+        $this->actingAs($this->superAdmin)
+            ->put(route('super-admin.settings.update'), [
+                'platform_name' => 'Renamed Platform',
+                'default_free_ai_credits' => 15,
+                'maintenance_mode' => 0,
+                'allowed_file_types' => 'pdf,docx',
+                'max_upload_size_mb' => 10,
+                'credit_price_per_5' => 1000,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue(PlatformSetting::get('feature_default_enable_parent_portal'));
+        $this->assertTrue(PlatformSetting::get('feature_default_enable_quiz_generator'));
+        $this->assertSame('Renamed Platform', PlatformSetting::get('platform_name'));
+    }
+
+    public function test_super_admin_sets_help_video_links(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->put(route('super-admin.settings.help-videos'), [
+                'help_video_gradebook' => 'https://youtu.be/dQw4w9WgXcQ',
+                'help_video_cbt_create' => '',
+                'help_video_report_cards' => 'https://vimeo.com/76979871',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('https://youtu.be/dQw4w9WgXcQ', PlatformSetting::get('help_video_gradebook'));
+        $this->assertSame('https://vimeo.com/76979871', PlatformSetting::get('help_video_report_cards'));
+    }
+
+    public function test_help_video_links_must_be_youtube_or_vimeo(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->put(route('super-admin.settings.help-videos'), ['help_video_gradebook' => 'https://example.com/video.mp4'])
+            ->assertSessionHasErrors('help_video_gradebook');
+    }
+
+    public function test_school_admin_cannot_set_help_videos(): void
+    {
+        $admin = User::withoutGlobalScopes()->where('school_id', $this->targetSchool->id)->where('role', 'school_admin')->firstOrFail();
+        $admin->update(['must_change_password' => false, 'email_verified_at' => now()]);
+
+        $this->actingAs($admin)
+            ->put(route('super-admin.settings.help-videos'), ['help_video_gradebook' => 'https://youtu.be/dQw4w9WgXcQ'])
+            ->assertForbidden();
+    }
 }

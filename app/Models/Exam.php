@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Traits\Auditable;
 use App\Traits\BelongsToTenant;
+use App\Traits\UndoableDeletes;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Exam extends Model
 {
-    use Auditable, BelongsToTenant, HasFactory;
+    use Auditable, BelongsToTenant, HasFactory, UndoableDeletes;
 
     protected $fillable = [
         'school_id',
@@ -403,5 +404,15 @@ class Exam extends Model
             ->count();
 
         return $baseAttempts + $usedResetAttempts + $activeResetAttempts;
+    }
+
+    public function undoableTitle(): string
+    {
+        return $this->title;
+    }
+
+    protected function undoableFileColumns(): array
+    {
+        return ['source_document_public_id'];
     }
 }

@@ -115,7 +115,7 @@
                 <flux:table.column class="text-center">{{ __('Questions') }}</flux:table.column>
                 <flux:table.column>{{ __('Status') }}</flux:table.column>
                 <flux:table.column>{{ __('Created By') }}</flux:table.column>
-                <flux:table.column class="w-48" />
+                <flux:table.column class="w-14"><span class="sr-only">{{ __('Actions') }}</span></flux:table.column>
             </flux:table.columns>
             <flux:table.rows>
                 @forelse ($exams as $exam)
@@ -150,34 +150,28 @@
                             <flux:badge :color="$statusColors[$exam->status] ?? 'zinc'" size="sm">{{ ucfirst($exam->status) }}</flux:badge>
                         </flux:table.cell>
                         <flux:table.cell class="text-sm text-zinc-500">{{ $exam->creator?->name ?? '—' }}</flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="eye" href="{{ route($examRoutePrefix . '.show', $exam) }}" wire:navigate aria-label="{{ __('View') }}" />
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name', ['name' => $exam->title])">
+                                <flux:menu.item icon="eye" href="{{ route($examRoutePrefix . '.show', $exam) }}" wire:navigate>{{ __('View questions') }}</flux:menu.item>
+                                <flux:menu.item icon="pencil-square" href="{{ route($examRoutePrefix . '.edit', $exam) }}" wire:navigate>{{ __('Edit') }}</flux:menu.item>
                                 @if ($exam->is_published)
-                                    <flux:button variant="subtle" size="xs" icon="chart-bar" href="{{ route($examRoutePrefix . '.results', $exam) }}" wire:navigate aria-label="{{ __('Results') }}" />
+                                    <flux:menu.item icon="chart-bar" href="{{ route($examRoutePrefix . '.results', $exam) }}" wire:navigate>{{ __('Student results') }}</flux:menu.item>
                                 @endif
                                 @if ($exam->status === 'approved' && $exam->is_published)
-                                    <flux:button variant="subtle" size="xs" icon="arrow-path" href="{{ route($examRoutePrefix . '.reset-access', $exam) }}" wire:navigate aria-label="{{ __('Reset student access') }}" />
+                                    <flux:menu.item icon="arrow-path" href="{{ route($examRoutePrefix . '.reset-access', $exam) }}" wire:navigate>{{ __('Let a student retake / resume') }}</flux:menu.item>
                                 @endif
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route($examRoutePrefix . '.edit', $exam) }}" wire:navigate aria-label="{{ __('Edit') }}" />
                                 @if ($exam->status === 'approved' && ! $exam->is_published)
-                                    <form method="POST" action="{{ route($examRoutePrefix . '.publish', $exam) }}" class="inline">
-                                        @csrf
-                                        <flux:button type="submit" variant="subtle" size="xs" icon="arrow-up-circle" aria-label="{{ __('Publish') }}" />
-                                    </form>
+                                    <x-row-actions.form :action="route($examRoutePrefix . '.publish', $exam)" icon="arrow-up-circle">{{ __('Publish to students') }}</x-row-actions.form>
                                 @elseif ($exam->is_published)
-                                    <form method="POST" action="{{ route($examRoutePrefix . '.unpublish', $exam) }}" class="inline">
-                                        @csrf
-                                        <flux:button type="submit" variant="subtle" size="xs" icon="arrow-down-circle" aria-label="{{ __('Unpublish') }}" />
-                                    </form>
+                                    <x-row-actions.form :action="route($examRoutePrefix . '.unpublish', $exam)" icon="arrow-down-circle">{{ __('Unpublish (hide from students)') }}</x-row-actions.form>
                                 @endif
-                                <x-confirm-delete
+                                <flux:menu.separator />
+                                <x-row-actions.delete
                                     :action="route($examRoutePrefix . '.destroy', $exam)"
-                                    :title="__('Delete ' . $examTypeLabel)"
-                                    :message="__('Are you sure? All questions will be permanently deleted.')"
-                                    :ariaLabel="__('Delete :name', ['name' => $exam->title])"
+                                    :title="__('Delete :name?', ['name' => $exam->title])"
+                                    :message="__('Students will no longer see it. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
                                 />
-                            </div>
+                            </x-row-actions>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty

@@ -18,6 +18,7 @@ use App\Services\AiCreditService;
 use App\Services\ExamGeneratorService;
 use App\Services\ExamGradingService;
 use App\Services\FileUploadService;
+use App\Services\RecentlyDeletedService;
 use App\Services\ScoreAggregationService;
 use App\Traits\NotifiesAdminsOnSubmission;
 use Illuminate\Http\JsonResponse;
@@ -689,7 +690,7 @@ class ExamController extends Controller
         $exam->delete();
 
         return redirect()->route("{$routePrefix}.index")
-            ->with('success', __(':type deleted.', ['type' => $this->categoryLabel()]));
+            ->with('undo', app(RecentlyDeletedService::class)->deleted($exam, 'teacher'));
     }
 
     /**

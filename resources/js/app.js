@@ -141,7 +141,7 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
-    Alpine.data('gradebook', (initialScores, compsMeta, inputCols) => ({
+    Alpine.data('gradebook', (initialScores, compsMeta) => ({
         scores: { ...initialScores },
         dirty: {},
         saving: false,
@@ -194,6 +194,20 @@ document.addEventListener('alpine:init', () => {
             return `${val.toFixed(1)}%`;
         },
 
+        // Same subject + component in the nearest row above/below, skipping locked cells.
+        // Matched by data-key (studentId-subjectId-componentId), so it holds however many subjects are shown.
+        cellInColumn(input, direction) {
+            const column = input.dataset.key.split('-').slice(1).join('-');
+            let row = input.closest('tr')[direction];
+            while (row) {
+                const candidate = row.querySelector(`input.cell-input[data-key$="-${column}"]`);
+                if (candidate && !candidate.disabled) return candidate;
+                row = row[direction];
+            }
+
+            return null;
+        },
+
         handleKeydown(e) {
             const target = e.target;
             if (!target.matches('input.cell-input')) return;
@@ -212,10 +226,10 @@ document.addEventListener('alpine:init', () => {
                 next = inputs[idx - 1];
             } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
                 e.preventDefault();
-                next = inputs[idx + inputCols];
+                next = this.cellInColumn(target, 'nextElementSibling');
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                next = inputs[idx - inputCols];
+                next = this.cellInColumn(target, 'previousElementSibling');
             } else if (e.key === 'ArrowRight') {
                 if (target.selectionStart === target.value.length) {
                     e.preventDefault();
@@ -255,6 +269,20 @@ document.addEventListener('alpine:init', () => {
             } finally {
                 this.saving = false;
             }
+        },
+
+        // Unsaved scores are saved before another subject replaces the columns on screen
+        async switchSubject(select, confirmOptions) {
+            const value = select.value === '' ? null : parseInt(select.value, 10);
+            if (this.changeCount > 0) {
+                const ok = await window.appConfirm(confirmOptions);
+                if (ok) await this.save();
+                if (!ok || this.changeCount > 0) {
+                    select.value = this.$wire.subjectId ?? '';
+                    return;
+                }
+            }
+            this.$wire.set('subjectId', value);
         },
 
         onSaved() {
@@ -525,12 +553,30 @@ if ('serviceWorker' in navigator && document.querySelector('link[rel="manifest"]
 }
 
 /*
+ * The app's confirm dialog (resources/views/components/app-confirm-dialog.blade.php), used
+ * instead of the browser's confirm(). Resolves true when the user confirms.
+ *
+ *   appConfirm({ title, message, confirmLabel, cancelLabel, variant: 'danger' }).then(ok => ...)
+ */
+window.appConfirm = (options = {}) =>
+    new Promise((resolve) => {
+        window.dispatchEvent(new CustomEvent('app-confirm', { detail: { ...options, resolve } }));
+    });
+
+/*
  * Livewire answers an expired session (and, in production, some server errors) with HTTP 419
  * and shows a browser confirm() box. Show the app's own dialog instead.
  */
 document.addEventListener('livewire:init', () => {
     window.Livewire.interceptRequest(({ onError }) => {
         onError(({ response, preventDefault }) => {
+            // A super admin viewing a school tried to change something — viewing is read-only
+            if (response?.status === 403 && response.headers?.get('X-Impersonation-Read-Only')) {
+                preventDefault();
+                window.dispatchEvent(new CustomEvent('impersonation-read-only'));
+                return;
+            }
+
             if (response?.status !== 419) return;
 
             preventDefault();

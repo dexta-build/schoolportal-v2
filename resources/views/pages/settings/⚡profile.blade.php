@@ -72,8 +72,9 @@ new #[Title('Profile settings')] class extends Component
     #[Computed]
     public function showDeleteUser(): bool
     {
-        return ! Auth::user() instanceof MustVerifyEmail
-            || (Auth::user() instanceof MustVerifyEmail && Auth::user()->hasVerifiedEmail());
+        // School accounts are managed (and deactivated) by the school admin. Deleting an account
+        // would also delete a student's results, attempts and report cards, so users can't do it.
+        return false;
     }
 }; ?>
 

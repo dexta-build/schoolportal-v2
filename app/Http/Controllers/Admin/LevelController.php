@@ -65,9 +65,10 @@ class LevelController extends Controller
 
     public function destroy(SchoolLevel $level): RedirectResponse
     {
-        if ($level->classes()->exists()) {
+        // Deleted classes count too: removing the level would remove them for good
+        if ($level->classes()->withTrashed()->exists()) {
             return redirect()->route('admin.levels.index')
-                ->with('error', __('Cannot delete a level that has classes. Remove classes first.'));
+                ->with('error', __('Cannot delete a level that has classes (including classes in Recently deleted). Remove them first.'));
         }
 
         $level->delete();
@@ -83,7 +84,7 @@ class LevelController extends Controller
             'level_ids.*' => ['integer', 'exists:school_levels,id'],
         ]);
 
-        $levels = SchoolLevel::withCount('classes')
+        $levels = SchoolLevel::withCount(['classes' => fn ($q) => $q->withTrashed()])
             ->whereIn('id', $validated['level_ids'])
             ->get();
 

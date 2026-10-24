@@ -27,7 +27,7 @@
                 <option value="">{{ __('All Types') }}</option>
                 <option value="result" @selected(request('type') === 'result')>{{ __('Results') }}</option>
                 <option value="assignment" @selected(request('type') === 'assignment')>{{ __('Assignments') }}</option>
-                <option value="notice" @selected(request('type') === 'notice')>{{ __('Notices') }}</option>
+                <option value="notice" @selected(request('type') === 'notice')>{{ __('Notice Board') }}</option>
                 <option value="quiz" @selected(request('type') === 'quiz')>{{ __('Quizzes') }}</option>
                 <option value="game" @selected(request('type') === 'game')>{{ __('Games') }}</option>
                 <option value="exam" @selected(request('type') === 'exam')>{{ __('Exams') }}</option>

@@ -10,6 +10,7 @@ use App\Models\AuditLog;
 use App\Models\ClassSubject;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Models\SchoolClass;
 use App\Models\ScoreAmendment;
 use App\Models\ScoreComponent;
 use App\Models\StudentProfile;
@@ -24,6 +25,7 @@ use App\Services\ScoreAggregationService;
 use App\Services\ScoreCorrectionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -88,6 +90,34 @@ class ScoreCorrectionTest extends TestCase
         $this->class->update(['teacher_id' => $this->teacher->id]);
 
         $this->student = $this->makeStudent('Ada Obi');
+    }
+
+    // ── One subject at a time (phones) ───────────────────────────────────────
+
+    public function test_gradebook_shows_only_the_chosen_subject(): void
+    {
+        $english = $this->addSubject('English Language');
+
+        // Column headers are titled "Subject — Component"
+        $this->gradebookAs($this->admin)
+            ->assertSee('Mathematics — Continuous Assessment')
+            ->assertSee('English Language — Continuous Assessment')
+            ->set('subjectId', $english->id)
+            ->assertSee('English Language — Continuous Assessment')
+            ->assertDontSee('Mathematics — Continuous Assessment');
+    }
+
+    public function test_one_subject_mode_keeps_a_subject_picked_when_the_class_changes(): void
+    {
+        $gradebook = $this->gradebookAs($this->admin)->call('useOneSubjectMode');
+        $this->assertSame($this->subject->id, $gradebook->get('subjectId'));
+
+        // A class without Mathematics falls back to its own first subject
+        $otherClass = SchoolClass::create(['school_id' => $this->school->id, 'level_id' => $this->class->level_id, 'name' => 'Class B', 'slug' => 'class-b']);
+        $english = $this->addSubject('English Language', $otherClass);
+
+        $gradebook->set('classId', $otherClass->id);
+        $this->assertSame($english->id, $gradebook->get('subjectId'));
     }
 
     // ── Locking ──────────────────────────────────────────────────────────────
@@ -412,6 +442,14 @@ class ScoreCorrectionTest extends TestCase
     private function reportFor(User $student): StudentTermReport
     {
         return StudentTermReport::withoutGlobalScopes()->where('student_id', $student->id)->where('term_id', $this->term->id)->firstOrFail();
+    }
+
+    private function addSubject(string $name, ?SchoolClass $class = null): Subject
+    {
+        $subject = Subject::create(['school_id' => $this->school->id, 'name' => $name, 'slug' => Str::slug($name), 'short_name' => mb_substr($name, 0, 3), 'category' => 'general', 'is_active' => true]);
+        ClassSubject::create(['school_id' => $this->school->id, 'class_id' => ($class ?? $this->class)->id, 'subject_id' => $subject->id]);
+
+        return $subject;
     }
 
     private function gradebookAs(User $user, string $role = 'admin'): Testable

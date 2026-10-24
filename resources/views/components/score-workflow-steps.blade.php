@@ -4,7 +4,7 @@
     $isAdmin = str_starts_with(request()->route()?->getName() ?? '', 'admin.');
     $steps = [
         'grading' => [
-            'label' => __('Grading Setup'),
+            'label' => __('Grading & Score Setup'),
             'route' => $isAdmin ? route('admin.grading.index') : null,
             'number' => 1,
         ],
@@ -21,7 +21,7 @@
     ];
 @endphp
 
-<nav aria-label="{{ __('Score workflow') }}" class="flex items-center gap-1.5 text-sm">
+<nav aria-label="{{ __('Score workflow') }}" class="flex flex-wrap items-center gap-1.5 text-sm">
     @foreach ($steps as $key => $step)
         @if (!$loop->first)
             <flux:icon name="chevron-right" class="size-3.5 text-zinc-400 dark:text-zinc-500 shrink-0" />
@@ -44,4 +44,12 @@
             </span>
         @endif
     @endforeach
+
+    @if ($isAdmin)
+        <span class="mx-1 h-4 w-px bg-zinc-200 dark:bg-zinc-700" aria-hidden="true"></span>
+        <a href="{{ route('admin.end-of-term') }}" wire:navigate class="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
+            <flux:icon.flag class="size-4" />
+            {{ __('End of Term checklist') }}
+        </a>
+    @endif
 </nav>

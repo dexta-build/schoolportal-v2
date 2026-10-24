@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\RecentlyDeletedService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -25,6 +26,9 @@ Schedule::command('db:backup')
 
 // Delete abandoned CSV-import / bulk-result preview uploads older than a day
 Schedule::command('storage:prune-temp')->dailyAt('03:30')->onOneServer();
+
+// Permanently remove items deleted more than 30 days ago (Recently deleted), with their Cloudinary files
+Schedule::command('model:prune', ['--model' => RecentlyDeletedService::modelClasses()])->dailyAt('03:45')->onOneServer();
 
 // Count hosting files hourly and email an alert when nearing the cPanel inode limit
 Schedule::command('health:file-usage')->hourly()->withoutOverlapping()->onOneServer();

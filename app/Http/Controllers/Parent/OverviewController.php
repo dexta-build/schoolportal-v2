@@ -72,6 +72,9 @@ class OverviewController extends Controller
      */
     public function cbt(): View
     {
+        // The school decides whether parents see CBT results (Settings → CBT Results for Parents)
+        abort_unless(app('current.school')->featureEnabled('enable_cbt_results_for_parents'), 404);
+
         $children = $this->getChildrenWithStats('cbt');
 
         return view('parent.overview.cbt', compact('children'));

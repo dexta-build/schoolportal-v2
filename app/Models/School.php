@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Traits\HasCloudinaryImages;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -119,6 +120,27 @@ class School extends Model
     public function isPlatform(): bool
     {
         return $this->slug === self::PLATFORM_SLUG;
+    }
+
+    /** A school must stay deactivated this long before it can be permanently deleted. */
+    public const DELETION_WAITING_DAYS = 30;
+
+    /**
+     * The earliest date the school can be permanently deleted, or null while it is still active.
+     * The waiting period protects against deleting the wrong school, or one that changes its mind.
+     */
+    public function deletableFrom(): ?CarbonInterface
+    {
+        if ($this->is_active || ! $this->deactivated_at) {
+            return null;
+        }
+
+        return $this->deactivated_at->copy()->addDays(self::DELETION_WAITING_DAYS);
+    }
+
+    public function canBePermanentlyDeleted(): bool
+    {
+        return ! $this->isPlatform() && $this->deletableFrom()?->isPast() === true;
     }
 
     public function scopeTenants(Builder $query): Builder

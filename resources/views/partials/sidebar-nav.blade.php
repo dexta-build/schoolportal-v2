@@ -53,17 +53,23 @@
 
 {{-- School Admin Navigation --}}
 @if ($user->isSchoolAdmin())
-    <flux:sidebar.group expandable :heading="__('Overview')" icon="building-office" :expanded="request()->routeIs('admin.dashboard', 'admin.analytics', 'admin.insights')" class="grid">
-        <flux:sidebar.item icon="home" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
-            {{ __('Dashboard') }}
-        </flux:sidebar.item>
-        <flux:sidebar.item icon="chart-bar-square" :href="route('admin.analytics')" :current="request()->routeIs('admin.analytics', 'admin.insights')" wire:navigate>
-            {{ __('Analytics & Insights') }}
-        </flux:sidebar.item>
-    </flux:sidebar.group>
+    @php
+        $pendingApprovalCount = \App\Models\TeacherAction::where('status', 'pending')->count();
+    @endphp
 
-    <flux:sidebar.group expandable :heading="__('People')" icon="user-group" :expanded="request()->routeIs('admin.students.*', 'admin.teachers.*', 'admin.parents.*')" class="grid">
-        <flux:sidebar.item icon="academic-cap" :href="route('admin.students.index')" :current="request()->routeIs('admin.students.*')" wire:navigate>
+    {{-- Daily work first: what needs attention --}}
+    <flux:sidebar.item icon="home" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
+        {{ __('Dashboard') }}
+    </flux:sidebar.item>
+    <flux:sidebar.item icon="check-badge" :href="route('admin.approvals.index')" :current="request()->routeIs('admin.approvals.*')" :badge="$pendingApprovalCount > 0 ? $pendingApprovalCount : null" badge:color="red" wire:navigate>
+        {{ __('Approvals') }}
+    </flux:sidebar.item>
+    <flux:sidebar.item icon="chart-bar-square" :href="route('admin.analytics')" :current="request()->routeIs('admin.analytics', 'admin.insights')" wire:navigate>
+        {{ __('Analytics & Insights') }}
+    </flux:sidebar.item>
+
+    <flux:sidebar.group expandable :heading="__('People')" icon="user-group" :expanded="request()->routeIs('admin.students.*', 'admin.teachers.*', 'admin.parents.*', 'admin.promotions.*')" class="grid">
+        <flux:sidebar.item icon="academic-cap" :href="route('admin.students.index')" :current="request()->routeIs('admin.students.*') && ! request()->routeIs('admin.students.move')" wire:navigate>
             {{ __('Students') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="user-group" :href="route('admin.teachers.index')" :current="request()->routeIs('admin.teachers.*')" wire:navigate>
@@ -71,6 +77,14 @@
         </flux:sidebar.item>
         <flux:sidebar.item icon="users" :href="route('admin.parents.index')" :current="request()->routeIs('admin.parents.*')" wire:navigate>
             {{ __('Parents') }}
+        </flux:sidebar.item>
+        {{-- Promotion: to the next class/level at the start of a new session --}}
+        <flux:sidebar.item icon="arrow-up-on-square-stack" :href="route('admin.promotions.index')" :current="request()->routeIs('admin.promotions.*')" wire:navigate>
+            {{ __('Promote Students (New Session)') }}
+        </flux:sidebar.item>
+        {{-- Move: to another class in the same level, during the same session --}}
+        <flux:sidebar.item icon="arrows-right-left" :href="route('admin.students.move')" :current="request()->routeIs('admin.students.move')" wire:navigate>
+            {{ __('Change Class (Same Session)') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 
@@ -89,18 +103,24 @@
         </flux:sidebar.item>
     </flux:sidebar.group>
 
-    <flux:sidebar.group expandable :heading="__('Scores & Reports')" icon="document-chart-bar" :expanded="request()->routeIs('admin.grading.*', 'admin.scores.*', 'admin.results.*')" class="grid">
+    <flux:sidebar.group expandable :heading="__('Scores & Reports')" icon="document-chart-bar" :expanded="request()->routeIs('admin.grading.*', 'admin.scores.*', 'admin.results.*', 'admin.end-of-term')" class="grid">
         <flux:sidebar.item icon="chart-bar" :href="route('admin.grading.index')" :current="request()->routeIs('admin.grading.*')" wire:navigate>
-            {{ __('Grading Setup') }}
+            {{ __('Grading & Score Setup') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="calculator" :href="route('admin.scores.index')" :current="request()->routeIs('admin.scores.index', 'admin.scores.enter', 'admin.scores.export')" wire:navigate>
             {{ __('Score Entry') }}
         </flux:sidebar.item>
+        {{-- Generated from the scores entered in the portal --}}
         <flux:sidebar.item icon="document-chart-bar" :href="route('admin.scores.reports')" :current="request()->routeIs('admin.scores.reports*', 'admin.scores.generate*')" wire:navigate>
             {{ __('Report Cards') }}
         </flux:sidebar.item>
+        {{-- Result files prepared outside the portal and uploaded as PDFs --}}
         <flux:sidebar.item icon="document-text" :href="route('admin.results.index')" :current="request()->routeIs('admin.results.*')" wire:navigate>
-            {{ __('Uploaded Results') }}
+            {{ __('Result Sheets (PDF)') }}
+        </flux:sidebar.item>
+        {{-- Guided checklist: scores → lock → report cards → approve → publish → promote --}}
+        <flux:sidebar.item icon="flag" :href="route('admin.end-of-term')" :current="request()->routeIs('admin.end-of-term')" wire:navigate>
+            {{ __('End of Term') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 
@@ -115,44 +135,36 @@
             {{ __('Games') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="chart-bar" :href="route('admin.performance.subjects')" :current="request()->routeIs('admin.performance.*')" wire:navigate>
-            {{ __('Performance') }}
+            {{ __('Subject Performance') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 
     <flux:sidebar.group expandable :heading="__('Communication')" icon="megaphone" :expanded="request()->routeIs('admin.notices.*', 'admin.announcements.*')" class="grid">
+        {{-- Posts with images/files on the notice board, sent as notifications --}}
         <flux:sidebar.item icon="megaphone" :href="route('admin.notices.index')" :current="request()->routeIs('admin.notices.*')" wire:navigate>
-            {{ __('Notices') }}
+            {{ __('Notice Board') }}
         </flux:sidebar.item>
+        {{-- Short banners across the top of dashboards, with start and end dates --}}
         <flux:sidebar.item icon="signal" :href="route('admin.announcements.index')" :current="request()->routeIs('admin.announcements.*')" wire:navigate>
-            {{ __('Announcements') }}
+            {{ __('Banner Announcements') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 
-    @php
-        $pendingApprovalCount = \App\Models\TeacherAction::where('status', 'pending')->count();
-    @endphp
-
-    <flux:sidebar.group expandable :heading="__('Management')" icon="cog-6-tooth" :expanded="request()->routeIs('admin.approvals.*', 'admin.promotions.*', 'admin.levels.*', 'admin.audit-logs.*', 'admin.credits.*', 'admin.settings.*', 'admin.help', 'admin.students.move')" class="grid">
-        <flux:sidebar.item icon="check-badge" :href="route('admin.approvals.index')" :current="request()->routeIs('admin.approvals.*')" :badge="$pendingApprovalCount > 0 ? $pendingApprovalCount : null" badge:color="red" wire:navigate>
-            {{ __('Approvals') }}
-        </flux:sidebar.item>
-        <flux:sidebar.item icon="arrow-up-on-square-stack" :href="route('admin.promotions.index')" :current="request()->routeIs('admin.promotions.*')" wire:navigate>
-            {{ __('Promotions') }}
+    <flux:sidebar.group expandable :heading="__('Settings')" icon="cog-6-tooth" :expanded="request()->routeIs('admin.levels.*', 'admin.audit-logs.*', 'admin.credits.*', 'admin.settings.*', 'admin.recently-deleted.*', 'admin.help')" class="grid">
+        <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings.index')" :current="request()->routeIs('admin.settings.*')" wire:navigate>
+            {{ __('School Settings') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="adjustments-horizontal" :href="route('admin.levels.index')" :current="request()->routeIs('admin.levels.*')" wire:navigate>
             {{ __('School Levels') }}
         </flux:sidebar.item>
-        <flux:sidebar.item icon="arrows-right-left" :href="route('admin.students.move')" :current="request()->routeIs('admin.students.move')" wire:navigate>
-            {{ __('Move Student') }}
-        </flux:sidebar.item>
         <flux:sidebar.item icon="sparkles" :href="route('admin.credits.index')" :current="request()->routeIs('admin.credits.*')" wire:navigate>
             {{ __('AI Credits') }}
         </flux:sidebar.item>
-        <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings.index')" :current="request()->routeIs('admin.settings.*')" wire:navigate>
-            {{ __('School Settings') }}
-        </flux:sidebar.item>
         <flux:sidebar.item icon="shield-check" :href="route('admin.audit-logs.index')" :current="request()->routeIs('admin.audit-logs.*')" wire:navigate>
             {{ __('Audit Logs') }}
+        </flux:sidebar.item>
+        <flux:sidebar.item icon="trash" :href="route('admin.recently-deleted.index')" :current="request()->routeIs('admin.recently-deleted.*')" wire:navigate>
+            {{ __('Recently deleted') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="question-mark-circle" :href="route('admin.help')" :current="request()->routeIs('admin.help')" wire:navigate>
             {{ __('Help Guide') }}
@@ -188,7 +200,7 @@
             {{ __('Subjects') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="document-text" :href="route('teacher.results.index')" :current="request()->routeIs('teacher.results.*')" wire:navigate>
-            {{ __('Uploaded Results') }}
+            {{ __('Result Sheets (PDF)') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="clipboard-document-list" :href="route('teacher.assignments.index')" :current="request()->routeIs('teacher.assignments.*')" wire:navigate>
             {{ __('Assignments') }}
@@ -206,22 +218,25 @@
             {{ __('Games') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="chart-bar" :href="route('teacher.performance.subjects')" :current="request()->routeIs('teacher.performance.*')" wire:navigate>
-            {{ __('Performance') }}
+            {{ __('Subject Performance') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 
-    <flux:sidebar.group expandable :heading="__('Tracking')" icon="clock" :expanded="request()->routeIs('teacher.submissions.*', 'teacher.insights')" class="grid">
+    <flux:sidebar.group expandable :heading="__('Tracking')" icon="clock" :expanded="request()->routeIs('teacher.submissions.*', 'teacher.insights', 'teacher.recently-deleted.*')" class="grid">
         <flux:sidebar.item icon="magnifying-glass" :href="route('teacher.insights')" :current="request()->routeIs('teacher.insights')" wire:navigate>
             {{ __('Student Insights') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="clock" :href="route('teacher.submissions.index')" :current="request()->routeIs('teacher.submissions.*')" wire:navigate>
             {{ __('My Submissions') }}
         </flux:sidebar.item>
+        <flux:sidebar.item icon="trash" :href="route('teacher.recently-deleted.index')" :current="request()->routeIs('teacher.recently-deleted.*')" wire:navigate>
+            {{ __('Recently deleted') }}
+        </flux:sidebar.item>
     </flux:sidebar.group>
 
     <flux:sidebar.group expandable :heading="__('Communications')" icon="chat-bubble-left-right" :expanded="request()->routeIs('teacher.notices.*')" class="grid">
         <flux:sidebar.item icon="megaphone" :href="route('teacher.notices.index')" :current="request()->routeIs('teacher.notices.*')" wire:navigate>
-            {{ __('Notices') }}
+            {{ __('Notice Board') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 @endif
@@ -245,7 +260,7 @@
             {{ __('Report Cards') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="document-text" :href="route('student.results.index')" :current="request()->routeIs('student.results.*')" wire:navigate>
-            {{ __('Uploaded Results') }}
+            {{ __('Result Sheets (PDF)') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="clipboard-document-list" :href="route('student.assignments.index')" :current="request()->routeIs('student.assignments.*')" wire:navigate>
             {{ __('Assignments') }}
@@ -266,7 +281,7 @@
 
     <flux:sidebar.group expandable :heading="__('Communications')" icon="chat-bubble-left-right" :expanded="request()->routeIs('student.notices.*')" class="grid">
         <flux:sidebar.item icon="megaphone" :href="route('student.notices.index')" :current="request()->routeIs('student.notices.*')" wire:navigate>
-            {{ __('Notices') }}
+            {{ __('Notice Board') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 @endif
@@ -287,7 +302,7 @@
             {{ __('Report Cards') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="document-text" :href="route('parent.results.index')" :current="request()->routeIs('parent.results*', 'parent.children.results*')" wire:navigate>
-            {{ __('Uploaded Results') }}
+            {{ __('Result Sheets (PDF)') }}
         </flux:sidebar.item>
         <flux:sidebar.item icon="clipboard-document-list" :href="route('parent.assignments.index')" :current="request()->routeIs('parent.assignments*', 'parent.children.assignments*')" wire:navigate>
             {{ __('Assignments') }}
@@ -310,7 +325,7 @@
 
     <flux:sidebar.group expandable :heading="__('Communication')" icon="megaphone" :expanded="request()->routeIs('parent.notices.*')" class="grid">
         <flux:sidebar.item icon="megaphone" :href="route('parent.notices.index')" :current="request()->routeIs('parent.notices.*')" wire:navigate>
-            {{ __('Notices') }}
+            {{ __('Notice Board') }}
         </flux:sidebar.item>
     </flux:sidebar.group>
 @endif

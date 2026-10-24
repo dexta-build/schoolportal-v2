@@ -6,6 +6,7 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\PlatformSetting;
+use App\Support\PageHelp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -40,10 +41,13 @@ class PlatformSettingsController extends Controller
         // Checkboxes: absent when unchecked
         $validated['maintenance_mode'] = $request->boolean('maintenance_mode');
 
-        // Resolve boolean feature flag defaults (checkboxes absent = false)
-        foreach (array_keys(PlatformSetting::FEATURE_FLAGS) as $flag) {
-            $key = "feature_default_{$flag}";
-            $validated[$key] = $request->boolean($key);
+        // Feature flag checkboxes are only on the Feature Flag Defaults form (absent there = off).
+        // Other forms on the page must leave them alone, not switch them all off.
+        if ($request->boolean('feature_flags_form')) {
+            foreach (array_keys(PlatformSetting::FEATURE_FLAGS) as $flag) {
+                $key = "feature_default_{$flag}";
+                $validated[$key] = $request->boolean($key);
+            }
         }
 
         foreach ($validated as $key => $value) {
@@ -51,5 +55,29 @@ class PlatformSettingsController extends Controller
         }
 
         return back()->with('success', __('Platform settings saved successfully.'));
+    }
+
+    /**
+     * Video links for the "How this page works" guides. Only YouTube and Vimeo links are accepted,
+     * since the guide plays them inside the page.
+     */
+    public function updateHelpVideos(Request $request): RedirectResponse
+    {
+        $rules = [];
+        foreach (PageHelp::VIDEO_SETTINGS as $setting) {
+            $rules[$setting] = ['nullable', 'string', 'max:500', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (filled($value) && PageHelp::embedUrl((string) $value) === null) {
+                    $fail(__('Paste a YouTube or Vimeo link.'));
+                }
+            }];
+        }
+
+        $validated = $request->validate($rules);
+
+        foreach (PageHelp::VIDEO_SETTINGS as $setting) {
+            PlatformSetting::set($setting, trim((string) ($validated[$setting] ?? '')));
+        }
+
+        return back()->with('success', __('Help videos saved.'));
     }
 }

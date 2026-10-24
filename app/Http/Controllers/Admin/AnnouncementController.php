@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SchoolAnnouncement;
+use App\Services\RecentlyDeletedService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -116,6 +117,6 @@ class AnnouncementController extends Controller
         $announcement->delete();
 
         return redirect()->route('admin.announcements.index')
-            ->with('success', __('Announcement deleted.'));
+            ->with('undo', app(RecentlyDeletedService::class)->deleted($announcement, 'admin'));
     }
 }

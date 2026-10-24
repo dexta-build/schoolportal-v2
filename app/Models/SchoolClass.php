@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Traits\BelongsToTenant;
+use App\Traits\UndoableDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SchoolClass extends Model
 {
-    use BelongsToTenant, HasFactory;
+    use BelongsToTenant, HasFactory, UndoableDeletes;
 
     protected $table = 'classes';
 
@@ -59,5 +60,15 @@ class SchoolClass extends Model
     {
         return $this->belongsToMany(Subject::class, 'class_subject', 'class_id', 'subject_id')
             ->withPivot('teacher_id');
+    }
+
+    public function undoableTitle(): string
+    {
+        return $this->name;
+    }
+
+    protected function undoableFileColumns(): array
+    {
+        return [];
     }
 }

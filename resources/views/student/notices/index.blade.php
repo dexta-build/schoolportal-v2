@@ -1,6 +1,6 @@
-<x-layouts::app :title="__('Notices')">
+<x-layouts::app :title="__('Notice Board')">
     <div class="space-y-6">
-        <x-admin-header :title="__('Notices')" :description="__('School announcements and updates.')" />
+        <x-admin-header :title="__('Notice Board')" :description="__('School announcements and updates.')" />
 
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             @forelse ($notices as $notice)

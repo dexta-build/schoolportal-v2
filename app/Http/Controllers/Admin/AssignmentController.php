@@ -11,6 +11,7 @@ use App\Models\SchoolClass;
 use App\Models\Term;
 use App\Services\FileUploadService;
 use App\Services\NotificationService;
+use App\Services\RecentlyDeletedService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -59,6 +60,10 @@ class AssignmentController extends Controller
             'assignment_file' => ['nullable', 'file', 'mimes:pdf,doc,docx,ppt,pptx,xls,xlsx,jpg,jpeg,png,gif,webp', 'max:10240'],
             'file_url' => ['nullable', 'url'],
         ]);
+
+        if (! Assignment::claimWeek((int) $validated['class_id'], (int) $validated['session_id'], (int) $validated['term_id'], (int) $validated['week_number'])) {
+            return back()->withInput()->withErrors(['week_number' => $this->weekTakenMessage((int) $validated['week_number'])]);
+        }
 
         $fileUrl = $validated['file_url'] ?? null;
         $filePublicId = null;
@@ -121,6 +126,10 @@ class AssignmentController extends Controller
             'file_url' => ['nullable', 'url'],
         ]);
 
+        if (! Assignment::claimWeek((int) $validated['class_id'], $assignment->session_id, $assignment->term_id, (int) $validated['week_number'], $assignment->id)) {
+            return back()->withInput()->withErrors(['week_number' => $this->weekTakenMessage((int) $validated['week_number'])]);
+        }
+
         $data = [
             'class_id' => $validated['class_id'],
             'week_number' => $validated['week_number'],
@@ -153,15 +162,19 @@ class AssignmentController extends Controller
             ->with('success', __('Assignment updated.'));
     }
 
+    /**
+     * Deleted assignments are kept for Assignment::RESTORE_DAYS so the delete can be undone; the file stays until then.
+     */
     public function destroy(Assignment $assignment): RedirectResponse
     {
-        if ($assignment->file_public_id) {
-            app(FileUploadService::class)->delete($assignment->file_public_id);
-        }
-
         $assignment->delete();
 
         return redirect()->route('admin.assignments.index')
-            ->with('success', __('Assignment deleted.'));
+            ->with('undo', app(RecentlyDeletedService::class)->deleted($assignment, 'admin'));
+    }
+
+    private function weekTakenMessage(int $week): string
+    {
+        return __('This class already has an assignment for week :week this term. Edit that one instead.', ['week' => $week]);
     }
 }

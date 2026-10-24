@@ -75,6 +75,9 @@ class NotificationLinksTest extends TestCase
         parent::setUp();
         $this->setUpSchoolContext();
 
+        // Parent CBT links only exist when the school shows parents CBT results
+        $this->school->update(['settings' => array_replace_recursive($this->school->settings ?? [], ['portal' => ['enable_cbt_results_for_parents' => true]])]);
+
         $session = AcademicSession::withoutGlobalScopes()->where('school_id', $this->school->id)->firstOrFail();
         $session->update(['is_current' => true, 'status' => 'active']);
         $term = Term::withoutGlobalScopes()->where('session_id', $session->id)->orderBy('term_number')->firstOrFail();

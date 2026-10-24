@@ -1,4 +1,4 @@
-<x-layouts::app :title="__(':name — Uploaded Results', ['name' => $child->name])">
+<x-layouts::app :title="__(':name — Result Sheets (PDF)', ['name' => $child->name])">
     <div class="space-y-6">
         {{-- Breadcrumb --}}
         <div class="flex items-center gap-2 flex-wrap">
@@ -10,11 +10,11 @@
                 {{ $child->name }}
             </flux:link>
             <flux:icon.chevron-right class="w-3 h-3 text-zinc-400" />
-            <flux:text class="text-sm">{{ __('Uploaded Results') }}</flux:text>
+            <flux:text class="text-sm">{{ __('Result Sheets (PDF)') }}</flux:text>
         </div>
 
         <x-admin-header
-            :title="__(':name\'s Uploaded Results', ['name' => $child->name])"
+            :title="__(':name\'s Result Sheets (PDF)', ['name' => $child->name])"
             :description="$child->studentProfile?->class?->name"
         />
 

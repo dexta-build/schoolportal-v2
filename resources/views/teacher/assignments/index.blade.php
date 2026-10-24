@@ -69,7 +69,7 @@
                         </flux:table.cell>
                         <flux:table.cell>
                             @if ($assignment->status !== 'approved')
-                                <flux:button variant="subtle" size="xs" icon="pencil" href="{{ route('teacher.assignments.edit', $assignment) }}" wire:navigate />
+                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('teacher.assignments.edit', $assignment) }}" wire:navigate>{{ __('Edit') }}</flux:button>
                             @endif
                         </flux:table.cell>
                     </flux:table.row>

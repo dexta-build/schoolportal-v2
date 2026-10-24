@@ -1,7 +1,7 @@
-<x-layouts::app :title="__('Announcements')">
+<x-layouts::app :title="__('Banner Announcements')">
     <div class="space-y-6">
         <x-admin-header
-            :title="__('Announcements')"
+            :title="__('Banner Announcements')"
             :description="__('Send banner announcements to teachers, students, and parents.')"
             :action="route('admin.announcements.create')"
             :actionLabel="__('New Announcement')"
@@ -58,11 +58,25 @@
                         <flux:table.cell class="hidden md:table-cell text-zinc-500">
                             {{ $ann->created_at->format('M j, Y') }}
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
+                        <flux:table.cell class="text-end">
+                            <div class="flex justify-end">
                                 {{-- Preview modal --}}
                                 <div x-data="{ showPreview: false }" @preview-announcement-{{ $ann->id }}.window="showPreview = true">
-                                    <flux:button variant="subtle" size="xs" icon="eye" @click="showPreview = true" :aria-label="__('Preview')" />
+                                    <x-row-actions :label="__('Actions for :name', ['name' => $ann->title])">
+                                        <flux:menu.item icon="eye" x-on:click="showPreview = true">{{ __('Preview banner') }}</flux:menu.item>
+                                        <flux:menu.item icon="pencil-square" href="{{ route('admin.announcements.edit', $ann) }}" wire:navigate>{{ __('Edit') }}</flux:menu.item>
+                                        @if ($ann->is_active)
+                                            <x-row-actions.form :action="route('admin.announcements.deactivate', $ann)" icon="pause">{{ __('Stop showing') }}</x-row-actions.form>
+                                        @else
+                                            <x-row-actions.form :action="route('admin.announcements.activate', $ann)" icon="play">{{ __('Start showing') }}</x-row-actions.form>
+                                        @endif
+                                        <flux:menu.separator />
+                                        <x-row-actions.delete
+                                            :action="route('admin.announcements.destroy', $ann)"
+                                            :title="__('Delete this banner?')"
+                                            :message="__('It will stop showing to everyone. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
+                                        />
+                                    </x-row-actions>
 
                                     <div x-show="showPreview" x-cloak x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showPreview = false" @keydown.escape.window="showPreview = false">
                                         <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl max-w-lg w-full mx-auto max-h-[80vh] flex flex-col" @click.stop>
@@ -102,25 +116,6 @@
                                         </div>
                                     </div>
                                 </div>
-
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" :href="route('admin.announcements.edit', $ann)" wire:navigate />
-                                @if ($ann->is_active)
-                                    <form method="POST" action="{{ route('admin.announcements.deactivate', $ann) }}" class="inline">
-                                        @csrf
-                                        <flux:button variant="subtle" size="xs" icon="pause" type="submit" title="{{ __('Deactivate') }}" />
-                                    </form>
-                                @else
-                                    <form method="POST" action="{{ route('admin.announcements.activate', $ann) }}" class="inline">
-                                        @csrf
-                                        <flux:button variant="subtle" size="xs" icon="play" type="submit" title="{{ __('Activate') }}" />
-                                    </form>
-                                @endif
-                                <x-confirm-delete
-                                    :action="route('admin.announcements.destroy', $ann)"
-                                    :title="__('Delete Announcement')"
-                                    :message="__('Are you sure you want to delete this announcement?')"
-                                    :ariaLabel="__('Delete announcement')"
-                                />
                             </div>
                         </flux:table.cell>
                     </flux:table.row>

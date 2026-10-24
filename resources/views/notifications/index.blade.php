@@ -141,24 +141,19 @@
                     </div>
 
                     {{-- Actions --}}
-                    <div class="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                        @if ($isUnread)
-                            <form method="POST" action="{{ url('/portal/notifications/' . $notification->id . '/read') }}">
-                                @csrf
-                                <flux:button type="submit" variant="subtle" size="xs" icon="check" aria-label="{{ __('Mark as read') }}" title="{{ __('Mark as read') }}" />
-                            </form>
-                        @endif
-                        @if ($data['action_url'] ?? null)
-                            <form method="POST" action="{{ url('/portal/notifications/' . $notification->id . '/read') }}">
-                                @csrf
-                                <flux:button type="submit" variant="subtle" size="xs" icon="arrow-top-right-on-square" aria-label="{{ __('Open') }}" title="{{ __('Open') }}" />
-                            </form>
-                        @endif
-                        <form method="POST" action="{{ url('/portal/notifications/' . $notification->id) }}">
-                            @csrf
-                            @method('DELETE')
-                            <flux:button type="submit" variant="subtle" size="xs" icon="trash" class="text-red-500 hover:text-red-600" aria-label="{{ __('Delete') }}" title="{{ __('Delete') }}" />
-                        </form>
+                    {{-- Always visible: phones have no hover --}}
+                    <div class="shrink-0">
+                        <x-row-actions :label="__('Actions for this notification')">
+                            @if ($data['action_url'] ?? null)
+                                <x-row-actions.form :action="url('/portal/notifications/' . $notification->id . '/read')" icon="arrow-top-right-on-square">{{ __('Open') }}</x-row-actions.form>
+                            @endif
+                            {{-- Opening also marks it read, so this is only offered when there is nothing to open --}}
+                            @if ($isUnread && ! ($data['action_url'] ?? null))
+                                <x-row-actions.form :action="url('/portal/notifications/' . $notification->id . '/read')" icon="check">{{ __('Mark as read') }}</x-row-actions.form>
+                            @endif
+                            <flux:menu.separator />
+                            <x-row-actions.form :action="url('/portal/notifications/' . $notification->id)" method="DELETE" icon="trash" variant="danger">{{ __('Remove from list') }}</x-row-actions.form>
+                        </x-row-actions>
                     </div>
 
                     {{-- Unread dot (always visible, unlike actions) --}}

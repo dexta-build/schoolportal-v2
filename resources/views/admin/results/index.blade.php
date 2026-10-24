@@ -1,7 +1,8 @@
-<x-layouts::app :title="__('Uploaded Results')">
+<x-layouts::app :title="__('Result Sheets (PDF)')">
     <div class="space-y-6">
         <x-admin-header
-            :title="__('Uploaded Results')"
+            :title="__('Result Sheets (PDF)')"
+            :description="__('Result sheets prepared outside the portal and uploaded as PDF files. Report cards made from scores entered in the portal are under Report Cards.')"
             :action="route('admin.results.create')"
             :actionLabel="__('Upload Result')"
         >
@@ -67,17 +68,17 @@
                             @endif
                         </flux:table.cell>
                         <flux:table.cell class="text-zinc-500">{{ $result->created_at->format('M j, Y') }}</flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="eye" href="{{ route('admin.results.show', $result) }}" wire:navigate aria-label="{{ __('View result') }}" />
-                                <flux:button variant="subtle" size="xs" icon="arrow-path" href="{{ route('admin.results.edit', $result) }}" wire:navigate aria-label="{{ __('Replace result') }}" />
-                                <x-confirm-delete
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name\'s result sheet', ['name' => $result->student?->name ?? __('student')])">
+                                <flux:menu.item icon="eye" href="{{ route('admin.results.show', $result) }}" wire:navigate>{{ __('View result sheet') }}</flux:menu.item>
+                                <flux:menu.item icon="arrow-path" href="{{ route('admin.results.edit', $result) }}" wire:navigate>{{ __('Replace PDF') }}</flux:menu.item>
+                                <flux:menu.separator />
+                                <x-row-actions.delete
                                     :action="route('admin.results.destroy', $result)"
-                                    :title="__('Delete Result')"
-                                    :message="__('Are you sure you want to delete this result? This action cannot be undone.')"
-                                    :ariaLabel="__('Delete result')"
+                                    :title="__('Delete this result sheet?')"
+                                    :message="__('The student and parents will no longer see it. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
                                 />
-                            </div>
+                            </x-row-actions>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty

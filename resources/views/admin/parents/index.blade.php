@@ -40,20 +40,16 @@
                                 <flux:badge color="zinc" size="sm">{{ __('Inactive') }}</flux:badge>
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.parents.edit', $parent) }}" wire:navigate aria-label="{{ __('Edit :name', ['name' => $parent->name]) }}" />
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name', ['name' => $parent->name])">
+                                <flux:menu.item icon="pencil-square" href="{{ route('admin.parents.edit', $parent) }}" wire:navigate>{{ __('Edit details & children') }}</flux:menu.item>
+                                <flux:menu.separator />
                                 @if ($parent->is_active)
-                                    <flux:modal.trigger :name="'deactivate-parent-' . $parent->id">
-                                        <flux:button variant="subtle" size="xs" icon="pause-circle" aria-label="{{ __('Deactivate') }}" />
-                                    </flux:modal.trigger>
+                                    <flux:menu.item icon="pause-circle" variant="danger" x-on:click="$flux.modal('deactivate-parent-{{ $parent->id }}').show()">{{ __('Deactivate (block login)') }}</flux:menu.item>
                                 @else
-                                    <form method="POST" action="{{ route('admin.parents.activate', $parent) }}" class="inline">
-                                        @csrf
-                                        <flux:button type="submit" variant="subtle" size="xs" icon="play-circle" aria-label="{{ __('Activate') }}" />
-                                    </form>
+                                    <x-row-actions.form :action="route('admin.parents.activate', $parent)" icon="play-circle">{{ __('Activate (allow login)') }}</x-row-actions.form>
                                 @endif
-                            </div>
+                            </x-row-actions>
 
                             {{-- Deactivate modal --}}
                             @if ($parent->is_active)

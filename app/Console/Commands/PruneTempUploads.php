@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Services\SchoolDataExportService;
 use App\Services\TempUploadService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -16,8 +17,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class PruneTempUploads extends Command
 {
-    /** Folders on the local disk that only ever hold upload → preview → confirm files. */
-    public const TEMP_DIRECTORIES = [TempUploadService::TYPE_STUDENT_IMPORT, TempUploadService::TYPE_BULK_RESULTS];
+    /** Folders on the local disk that only hold short-lived files (upload previews, school data exports). */
+    public const TEMP_DIRECTORIES = [TempUploadService::TYPE_STUDENT_IMPORT, TempUploadService::TYPE_BULK_RESULTS, SchoolDataExportService::TEMP_DIRECTORY];
 
     protected $signature = 'storage:prune-temp {--hours=24 : Delete files older than this many hours}';
 

@@ -59,7 +59,7 @@ class TeacherController extends Controller
                 ->orderBy('sort_order')
                 ->get(['id', 'name']);
 
-            $classes = SchoolClass::withoutGlobalScopes()
+            $classes = SchoolClass::withoutGlobalScope('tenant')
                 ->with('level:id,name')
                 ->where('school_id', $request->input('school_id'))
                 ->where('is_active', true)
@@ -110,7 +110,7 @@ class TeacherController extends Controller
         ]);
 
         if (! empty($validated['class_ids'])) {
-            SchoolClass::withoutGlobalScopes()
+            SchoolClass::withoutGlobalScope('tenant')
                 ->whereIn('id', $validated['class_ids'])
                 ->update(['teacher_id' => $teacher->id]);
         }
@@ -119,17 +119,6 @@ class TeacherController extends Controller
             ->with('success', __('Teacher ":name" created.', ['name' => $validated['name']]));
     }
 
-    public function destroy(User $teacher): RedirectResponse
-    {
-        abort_unless($teacher->role === 'teacher', 404);
-
-        SchoolClass::withoutGlobalScopes()
-            ->where('teacher_id', $teacher->id)
-            ->update(['teacher_id' => null]);
-
-        $teacher->delete();
-
-        return redirect()->route('super-admin.teachers.index')
-            ->with('success', __('Teacher deleted.'));
-    }
+    // No destroy: a school's teachers are the school's own records. The platform can't delete
+    // them, so no school can say its records were changed by the platform.
 }

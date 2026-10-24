@@ -1,7 +1,7 @@
 
-<x-layouts::app :title="__('Move Student')">
+<x-layouts::app :title="__('Change Class (Same Session)')">
     <div class="space-y-6">
-        <x-admin-header :title="__('Move Student')" />
+        <x-admin-header :title="__('Change Class (Same Session)')" :description="__('Move a student to another class in the same level during the current session — for example from JSS 1A to JSS 1B.')" />
 
         @if (session('success'))
             <flux:callout variant="success" icon="check-circle">{{ session('success') }}</flux:callout>

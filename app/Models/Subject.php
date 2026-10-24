@@ -30,6 +30,7 @@ class Subject extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
             'created_by' => 'integer',

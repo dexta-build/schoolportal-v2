@@ -43,7 +43,7 @@
         <div class="flex flex-wrap items-end gap-3">
             <flux:select name="type" onchange="window.location.href = this.value ? '{{ route('teacher.submissions.index') }}?type=' + this.value + '{{ request('status') ? '&status=' . request('status') : '' }}' : '{{ route('teacher.submissions.index') }}{{ request('status') ? '?status=' . request('status') : '' }}'">
                 <option value="">{{ __('All Types') }}</option>
-                <option value="result" @selected(request('type') === 'result')>{{ __('Uploaded Results') }}</option>
+                <option value="result" @selected(request('type') === 'result')>{{ __('Result Sheets (PDF)') }}</option>
                 <option value="assignment" @selected(request('type') === 'assignment')>{{ __('Assignments') }}</option>
                 <option value="notice" @selected(request('type') === 'notice')>{{ __('Notices') }}</option>
                 <option value="quiz" @selected(request('type') === 'quiz')>{{ __('Quizzes') }}</option>

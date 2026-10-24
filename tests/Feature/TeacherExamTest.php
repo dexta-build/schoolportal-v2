@@ -242,7 +242,7 @@ class TeacherExamTest extends TestCase
             ->delete(route('teacher.exams.destroy', $exam))
             ->assertRedirect(route('teacher.exams.index'));
 
-        $this->assertDatabaseMissing('exams', ['id' => $exam->id]);
+        $this->assertSoftDeleted('exams', ['id' => $exam->id]);
     }
 
     public function test_student_cannot_access_teacher_exam_routes(): void

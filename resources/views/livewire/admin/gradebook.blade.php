@@ -17,14 +17,18 @@
         'weight' => $c['weight'],
     ], $this->components));
 
-    $inputCols  = count($this->subjects) * count($this->components);
+    // One subject at a time when a subject is picked (always on phones)
+    $visibleSubjects = $this->subjectId
+        ? array_values(array_filter($this->subjects, fn ($s) => $s['id'] === $this->subjectId))
+        : $this->subjects;
     $hasGrid    = ! empty($this->grid);
     $hasSubjects = ! empty($this->subjects);
     $hasComps   = ! empty($this->components);
 @endphp
 
 <div
-    x-data="gradebook({{ Js::from($initialScores) }}, {{ Js::from($compsMeta) }}, {{ $inputCols }})"
+    x-data="gradebook({{ Js::from($initialScores) }}, {{ Js::from($compsMeta) }})"
+    x-init="window.matchMedia('(max-width: 767px)').matches && $wire.useOneSubjectMode()"
     x-on:scoresSaved.window="onSaved()"
     class="flex flex-col gap-0"
 >
@@ -40,6 +44,8 @@
                 </p>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
+                <x-page-help topic="gradebook" />
+
                 {{-- Export CSV --}}
                 @if ($this->classId && $this->termId)
                     <a href="{{ $this->role === 'teacher'
@@ -53,8 +59,11 @@
                 @if ($this->role === 'admin' && $this->classId && $this->termId)
                     @if ($this->unlockedFilledCells > 0)
                         <flux:button variant="subtle" size="sm" icon="lock-closed" type="button"
-                            wire:click="lockAll"
-                            wire:confirm="{{ __('Lock all scores for this class and term? Locked scores can only be changed through a recorded correction.') }}">
+                            x-on:click="appConfirm({
+                                title: {{ Js::from(__('Lock all scores?')) }},
+                                message: {{ Js::from(__('Scores for this class and term become final. After locking, a score can only be changed through a recorded correction.')) }},
+                                confirmLabel: {{ Js::from(__('Lock scores')) }},
+                            }).then(ok => ok && $wire.lockAll())">
                             {{ __('Lock All') }}
                         </flux:button>
                     @endif
@@ -116,6 +125,25 @@
                     @endforeach
                 </flux:select>
             </div>
+
+            {{-- Subject filter: one subject at a time (chosen automatically on phones) --}}
+            @if ($hasSubjects)
+                <div class="w-full sm:w-auto sm:min-w-[180px]">
+                    <flux:label for="gradebook-subject" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500">{{ __('Subject') }}</flux:label>
+                    <flux:select id="gradebook-subject" class="w-full"
+                        x-effect="$el.value = $wire.subjectId ?? ''"
+                        x-on:change="switchSubject($event.target, {
+                            title: {{ Js::from(__('Save your scores first?')) }},
+                            message: {{ Js::from(__('You have score changes that are not saved yet. They will be saved before switching subject.')) }},
+                            confirmLabel: {{ Js::from(__('Save and switch')) }},
+                        })">
+                        <option value="">{{ __('All subjects') }}</option>
+                        @foreach ($this->subjects as $subj)
+                            <option value="{{ $subj['id'] }}">{{ $subj['name'] }}</option>
+                        @endforeach
+                    </flux:select>
+                </div>
+            @endif
 
             {{-- Stats chips (only when grid loaded) --}}
             @if ($hasGrid)
@@ -179,8 +207,11 @@
                     <span>{{ trans_choice(':count report card is out of date because scores changed after it was generated.|:count report cards are out of date because scores changed after they were generated.', $this->staleReportCount, ['count' => $this->staleReportCount]) }}</span>
                 </div>
                 <flux:button size="sm" variant="primary" icon="arrow-path" type="button"
-                    wire:click="regenerateReports"
-                    wire:confirm="{{ __('Update all out-of-date report cards for this class? Positions are recalculated for the whole class. Published report cards stay published, the previous version is kept, and students and parents are told when theirs changed.') }}">
+                    x-on:click="appConfirm({
+                        title: {{ Js::from(__('Update report cards?')) }},
+                        message: {{ Js::from(__('Positions are recalculated for the whole class. Published report cards stay published, the previous version is kept, and students and parents are told when theirs changed.')) }},
+                        confirmLabel: {{ Js::from(__('Update report cards')) }},
+                    }).then(ok => ok && $wire.regenerateReports())">
                     {{ __('Update report cards') }}
                 </flux:button>
             </div>
@@ -231,7 +262,7 @@
                     </div>
                     @if ($this->role === 'admin')
                         <a href="{{ route('admin.grading.index', ['tab' => 'components']) }}">
-                            <flux:button size="sm" variant="primary" icon-trailing="arrow-right">{{ __('Grading Setup') }}</flux:button>
+                            <flux:button size="sm" variant="primary" icon-trailing="arrow-right">{{ __('Grading & Score Setup') }}</flux:button>
                         </a>
                     @endif
                 </div>
@@ -315,7 +346,7 @@
                         <tr class="bg-gradient-to-b from-zinc-50 to-zinc-100/80 dark:from-zinc-800 dark:to-zinc-800">
                             {{-- Sticky student column header --}}
                             <th rowspan="2"
-                                class="sticky left-0 z-20 bg-zinc-50 dark:bg-zinc-800 border-b-2 border-r border-zinc-200 dark:border-zinc-700 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 min-w-[200px] align-bottom">
+                                class="sticky left-0 z-20 bg-zinc-50 dark:bg-zinc-800 border-b-2 border-r border-zinc-200 dark:border-zinc-700 px-3 sm:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 min-w-[140px] sm:min-w-[200px] align-bottom">
                                 <div class="flex items-center gap-1.5">
                                     <flux:icon name="user" class="size-3.5" />
                                     {{ __('Student') }}
@@ -324,7 +355,7 @@
                             </th>
 
                             {{-- Subject name headers (spanning components + 1 total) --}}
-                            @foreach ($this->subjects as $subj)
+                            @foreach ($visibleSubjects as $subj)
                                 <th colspan="{{ count($this->components) + 1 }}"
                                     class="border-b border-l border-zinc-200 dark:border-zinc-700 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 whitespace-nowrap bg-zinc-50 dark:bg-zinc-800">
                                     {{ $subj['name'] }}
@@ -334,7 +365,7 @@
 
                         {{-- Row 2: Component names + Total --}}
                         <tr>
-                            @foreach ($this->subjects as $subj)
+                            @foreach ($visibleSubjects as $subj)
                                 @foreach ($this->components as $comp)
                                     <th class="bg-zinc-100 dark:bg-zinc-800 border-b-2 border-l border-zinc-200 dark:border-zinc-700 px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide min-w-[72px]"
                                         title="{{ $subj['name'] }} — {{ $comp['name'] }}">
@@ -358,14 +389,14 @@
                             <tr class="group {{ $i % 2 === 1 ? 'bg-zinc-50/50 dark:bg-zinc-800/20' : '' }} hover:bg-sky-50/40 dark:hover:bg-sky-900/10 transition-colors duration-75">
 
                                 {{-- Sticky student cell --}}
-                                <td class="sticky left-0 z-10 border-r border-zinc-200 dark:border-zinc-700 px-4 py-2 {{ $i % 2 === 1 ? 'bg-zinc-50/80 dark:bg-zinc-800/40' : 'bg-white dark:bg-zinc-900' }} group-hover:bg-sky-50/60 dark:group-hover:bg-sky-900/20 transition-colors duration-75">
+                                <td class="sticky left-0 z-10 border-r border-zinc-200 dark:border-zinc-700 px-3 sm:px-4 py-2 {{ $i % 2 === 1 ? 'bg-zinc-50/80 dark:bg-zinc-800/40' : 'bg-white dark:bg-zinc-900' }} group-hover:bg-sky-50/60 dark:group-hover:bg-sky-900/20 transition-colors duration-75">
                                     <div class="flex items-center gap-2.5 min-w-0">
                                         {{-- Avatar circle --}}
                                         <div class="size-7 shrink-0 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold">
                                             {{ mb_strtoupper(mb_substr($row['student_name'], 0, 1)) }}
                                         </div>
                                         <div class="min-w-0">
-                                            <div class="truncate max-w-[155px] font-medium text-zinc-800 dark:text-zinc-100 text-xs leading-snug">{{ $row['student_name'] }}</div>
+                                            <div class="truncate max-w-[100px] sm:max-w-[155px] font-medium text-zinc-800 dark:text-zinc-100 text-xs leading-snug">{{ $row['student_name'] }}</div>
                                             @if ($row['admission_number'])
                                                 <div class="text-[10px] text-zinc-400 font-mono">{{ $row['admission_number'] }}</div>
                                             @endif
@@ -374,7 +405,7 @@
                                 </td>
 
                                 {{-- Score cells per subject per component --}}
-                                @foreach ($this->subjects as $subj)
+                                @foreach ($visibleSubjects as $subj)
                                     @php $subid = $subj['id']; @endphp
                                     @foreach ($this->components as $comp)
                                         @php
@@ -396,7 +427,12 @@
                                                     }
                                                 @endphp
                                                 <button type="button"
-                                                    x-on:click="if (changeCount === 0 || confirm(@js(__('You have unsaved score changes. Save them first, or continue and lose them?')))) $wire.openCorrection({{ $cell['score_id'] }})"
+                                                    x-on:click="(changeCount === 0 ? Promise.resolve(true) : appConfirm({
+                                                        title: {{ Js::from(__('Discard unsaved scores?')) }},
+                                                        message: {{ Js::from(__('You have score changes that are not saved yet. Save them first, or continue and lose them.')) }},
+                                                        confirmLabel: {{ Js::from(__('Discard and continue')) }},
+                                                        variant: 'danger',
+                                                    })).then(ok => ok && $wire.openCorrection({{ $cell['score_id'] }}))"
                                                     title="{{ $cellTitle }}"
                                                     aria-label="{{ $row['student_name'] }}, {{ $subj['name'] }} {{ $comp['short_name'] }}: {{ $score !== '' ? $score + 0 : '—' }}. {{ $cellTitle }}"
                                                     class="relative mx-auto flex min-h-8 w-[62px] items-center justify-center gap-1 rounded bg-zinc-100 dark:bg-zinc-800 px-2 py-1.5 text-xs text-zinc-600 dark:text-zinc-300 ring-1 ring-transparent hover:ring-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">

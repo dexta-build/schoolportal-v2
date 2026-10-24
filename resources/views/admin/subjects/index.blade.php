@@ -47,16 +47,16 @@
                                 <flux:badge color="zinc" size="sm">{{ __('Inactive') }}</flux:badge>
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.subjects.edit', $subject) }}" wire:navigate aria-label="{{ __('Edit :name', ['name' => $subject->name]) }}" />
-                                <x-confirm-delete
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name', ['name' => $subject->name])">
+                                <flux:menu.item icon="pencil-square" href="{{ route('admin.subjects.edit', $subject) }}" wire:navigate>{{ __('Edit subject') }}</flux:menu.item>
+                                <flux:menu.separator />
+                                <x-row-actions.delete
                                     :action="route('admin.subjects.destroy', $subject)"
-                                    :title="__('Delete Subject')"
-                                    :message="__('Delete this subject and remove it from its assigned classes? Subjects with CBT or score history will be protected.')"
-                                    :ariaLabel="__('Delete :name', ['name' => $subject->name])"
+                                    :title="__('Delete :name?', ['name' => $subject->name])"
+                                    :message="__('It will be removed from its assigned classes. Subjects with CBT or score history are protected and will not be deleted.')"
                                 />
-                            </div>
+                            </x-row-actions>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty

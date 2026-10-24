@@ -89,7 +89,7 @@ class AdminClassCrudTest extends TestCase
             ->delete(route('admin.classes.destroy', $emptyClass))
             ->assertRedirect(route('admin.classes.index'));
 
-        $this->assertDatabaseMissing('classes', ['id' => $emptyClass->id]);
+        $this->assertSoftDeleted('classes', ['id' => $emptyClass->id]);
     }
 
     public function test_admin_cannot_delete_class_with_students(): void
@@ -142,7 +142,7 @@ class AdminClassCrudTest extends TestCase
             ->assertRedirect(route('admin.classes.index'))
             ->assertSessionHas('success');
 
-        $this->assertDatabaseMissing('classes', ['id' => $emptyClass->id]);
+        $this->assertSoftDeleted('classes', ['id' => $emptyClass->id]);
         $this->assertDatabaseHas('classes', ['id' => $this->class->id]);
     }
 

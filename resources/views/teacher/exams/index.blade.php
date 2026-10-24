@@ -122,23 +122,26 @@
                                 <span class="text-xs text-red-500 block mt-0.5" title="{{ $exam->latestTeacherAction->rejection_reason }}">{{ Str::limit($exam->latestTeacherAction->rejection_reason, 40) }}</span>
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="eye" href="{{ route($examRoutePrefix . '.show', $exam) }}" wire:navigate aria-label="{{ __('View') }}" />
+                        <flux:table.cell class="text-end">
+                            <div class="flex items-center justify-end gap-1">
+                                {{-- Results stay one tap away: it's what teachers open most --}}
                                 @if ($exam->is_published)
                                     <flux:button variant="primary" size="xs" icon="chart-bar" href="{{ route($examRoutePrefix . '.results', $exam) }}" wire:navigate>{{ __('Results') }}</flux:button>
                                 @endif
-                                @if (in_array($exam->status, ['draft', 'pending', 'rejected']))
-                                    <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route($examRoutePrefix . '.edit', $exam) }}" wire:navigate aria-label="{{ __('Edit') }}" />
-                                @endif
-                                @unless ($exam->is_published)
-                                    <x-confirm-delete
-                                        :action="route($examRoutePrefix . '.destroy', $exam)"
-                                        :title="__('Delete ' . $examTypeLabel)"
-                                        :message="__('Are you sure? This cannot be undone.')"
-                                        :ariaLabel="__('Delete :name', ['name' => $exam->title])"
-                                    />
-                                @endunless
+                                <x-row-actions :label="__('Actions for :name', ['name' => $exam->title])">
+                                    <flux:menu.item icon="eye" href="{{ route($examRoutePrefix . '.show', $exam) }}" wire:navigate>{{ __('View questions') }}</flux:menu.item>
+                                    @if (in_array($exam->status, ['draft', 'pending', 'rejected']))
+                                        <flux:menu.item icon="pencil-square" href="{{ route($examRoutePrefix . '.edit', $exam) }}" wire:navigate>{{ __('Edit') }}</flux:menu.item>
+                                    @endif
+                                    @unless ($exam->is_published)
+                                        <flux:menu.separator />
+                                        <x-row-actions.delete
+                                            :action="route($examRoutePrefix . '.destroy', $exam)"
+                                            :title="__('Delete :name?', ['name' => $exam->title])"
+                                            :message="__('Students will no longer see it. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
+                                        />
+                                    @endunless
+                                </x-row-actions>
                             </div>
                         </flux:table.cell>
                     </flux:table.row>

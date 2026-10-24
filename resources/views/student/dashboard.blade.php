@@ -112,7 +112,7 @@
                             <flux:icon.document-text class="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div class="min-w-0">
-                            <p class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Uploaded Results') }}</p>
+                            <p class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Result Sheets (PDF)') }}</p>
                             <p class="stat-value text-zinc-900 dark:text-white">{{ number_format($resultsCount) }}</p>
                         </div>
                     </div>
@@ -173,7 +173,7 @@
                             <flux:icon.megaphone class="w-4 h-4 sm:w-5 sm:h-5 text-cyan-600 dark:text-cyan-400" />
                         </div>
                         <div class="min-w-0">
-                            <p class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Notices') }}</p>
+                            <p class="text-[10px] sm:text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Notice Board') }}</p>
                             <p class="stat-value text-zinc-900 dark:text-white">{{ number_format($noticesCount) }}</p>
                         </div>
                     </div>

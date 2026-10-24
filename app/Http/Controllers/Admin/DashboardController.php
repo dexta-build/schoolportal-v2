@@ -14,6 +14,7 @@ use App\Models\Result;
 use App\Models\SchoolClass;
 use App\Models\TeacherAction;
 use App\Models\User;
+use App\Services\SetupChecklistService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
@@ -119,7 +120,13 @@ class DashboardController extends Controller
             ];
         }
 
+        // "Getting started" checklist for new schools
+        $checklist = app(SetupChecklistService::class);
+        $setupSteps = $checklist->steps($school);
+        $showSetupChecklist = $checklist->shouldShow($school, $setupSteps);
+
         return view('admin.dashboard', compact(
+            'setupSteps', 'showSetupChecklist',
             'school', 'currentSession', 'currentTerm',
             'allSessions', 'sessionTerms',
             'totalStudents', 'maleStudents', 'femaleStudents',

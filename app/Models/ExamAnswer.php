@@ -31,6 +31,9 @@ class ExamAnswer extends Model
     protected function casts(): array
     {
         return [
+            'attempt_id' => 'integer',
+            'question_id' => 'integer',
+            'school_id' => 'integer',
             'is_correct' => 'boolean',
             'points_earned' => 'integer',
             'answered_at' => 'datetime',

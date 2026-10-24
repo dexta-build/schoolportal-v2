@@ -7,6 +7,7 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSchoolRequest;
 use App\Http\Requests\UpdateSchoolRequest;
+use App\Jobs\DeleteSchoolFiles;
 use App\Models\AcademicSession;
 use App\Models\AiCreditUsageLog;
 use App\Models\Assignment;
@@ -25,6 +26,7 @@ use App\Notifications\WelcomeNewUser;
 use App\Services\DomainVerificationService;
 use App\Services\FileUploadService;
 use App\Services\NotificationService;
+use App\Services\SchoolDataExportService;
 use App\Services\SchoolSetupService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +37,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SchoolController extends Controller
 {
@@ -105,7 +108,7 @@ class SchoolController extends Controller
             // 2. Content created in last 30 days (results + quizzes)
             $since = now()->subDays(30);
 
-            $resultCounts = Result::withoutGlobalScopes()
+            $resultCounts = Result::withoutGlobalScope('tenant')
                 ->select('school_id', DB::raw('COUNT(*) as cnt'))
                 ->whereIn('school_id', $schoolIds)
                 ->where('created_at', '>=', $since)
@@ -233,7 +236,7 @@ class SchoolController extends Controller
         $school->parents_count = User::withoutGlobalScopes()->where('school_id', $school->id)->where('role', 'parent')->count();
         $school->admins_count = User::withoutGlobalScopes()->where('school_id', $school->id)->where('role', 'school_admin')->count();
         $school->levels_count = SchoolLevel::withoutGlobalScopes()->where('school_id', $school->id)->count();
-        $school->classes_count = SchoolClass::withoutGlobalScopes()->where('school_id', $school->id)->count();
+        $school->classes_count = SchoolClass::withoutGlobalScope('tenant')->where('school_id', $school->id)->count();
 
         $primaryAdmin = User::withoutGlobalScopes()
             ->where('school_id', $school->id)
@@ -285,25 +288,47 @@ class SchoolController extends Controller
                 'published' => Game::withoutGlobalScopes()->where('school_id', $school->id)->where('is_published', true)->count(),
             ],
             'exams' => [
-                'total' => Exam::withoutGlobalScopes()->where('school_id', $school->id)->count(),
-                'published' => Exam::withoutGlobalScopes()->where('school_id', $school->id)->where('is_published', true)->count(),
+                'total' => Exam::withoutGlobalScope('tenant')->where('school_id', $school->id)->count(),
+                'published' => Exam::withoutGlobalScope('tenant')->where('school_id', $school->id)->where('is_published', true)->count(),
             ],
             'results' => [
-                'total' => Result::withoutGlobalScopes()->where('school_id', $school->id)->count(),
-                'approved' => Result::withoutGlobalScopes()->where('school_id', $school->id)->where('status', 'approved')->count(),
-                'pending' => Result::withoutGlobalScopes()->where('school_id', $school->id)->where('status', 'pending')->count(),
+                'total' => Result::withoutGlobalScope('tenant')->where('school_id', $school->id)->count(),
+                'approved' => Result::withoutGlobalScope('tenant')->where('school_id', $school->id)->where('status', 'approved')->count(),
+                'pending' => Result::withoutGlobalScope('tenant')->where('school_id', $school->id)->where('status', 'pending')->count(),
             ],
             'assignments' => [
-                'total' => Assignment::withoutGlobalScopes()->where('school_id', $school->id)->count(),
-                'pending' => Assignment::withoutGlobalScopes()->where('school_id', $school->id)->where('status', 'pending')->count(),
+                'total' => Assignment::withoutGlobalScope('tenant')->where('school_id', $school->id)->count(),
+                'pending' => Assignment::withoutGlobalScope('tenant')->where('school_id', $school->id)->where('status', 'pending')->count(),
             ],
         ];
+
+        // Permanent deletion needs a data export taken after the school was deactivated
+        $dataExport = app(SchoolDataExportService::class)->exportSinceDeactivation($school);
 
         return view('super-admin.schools.show', compact(
             'school', 'primaryAdmin', 'schoolAdmins',
             'levels', 'currentSession', 'currentTerm', 'auditLogs',
-            'contentCounts',
+            'contentCounts', 'dataExport',
         ));
+    }
+
+    /**
+     * Download every record of a deactivated school as a ZIP of CSV files — handed to the school
+     * before it is permanently deleted. Reading only: nothing in the school changes.
+     */
+    public function exportData(Request $request, School $school, SchoolDataExportService $exporter): BinaryFileResponse|RedirectResponse
+    {
+        abort_if($school->isPlatform(), 403);
+
+        if ($school->is_active) {
+            return back()->with('error', __('Deactivate the school before exporting its data for deletion.'));
+        }
+
+        @set_time_limit(300);
+
+        $path = $exporter->export($school, $request->user());
+
+        return response()->download($path, basename($path), ['Content-Type' => 'application/zip'])->deleteFileAfterSend();
     }
 
     public function updateSettings(Request $request, School $school): RedirectResponse
@@ -610,6 +635,25 @@ class SchoolController extends Controller
     {
         abort_if($school->isPlatform(), 403, 'The platform school cannot be deleted.');
 
+        // Deleting wipes the school's entire history, so it must have been deactivated for a while first
+        if (! $school->canBePermanentlyDeleted()) {
+            return back()->with('error', $school->deletableFrom()
+                ? __('":name" can be permanently deleted from :date — schools must stay deactivated for :days days first.', [
+                    'name' => $school->name,
+                    'date' => $school->deletableFrom()->format('j M Y'),
+                    'days' => School::DELETION_WAITING_DAYS,
+                ])
+                : __('Deactivate ":name" first. It can be permanently deleted :days days after deactivation.', [
+                    'name' => $school->name,
+                    'days' => School::DELETION_WAITING_DAYS,
+                ]));
+        }
+
+        // The school's data must have been handed over first
+        if (! app(SchoolDataExportService::class)->exportSinceDeactivation($school)) {
+            return back()->with('error', __('Download the data export for ":name" before deleting it, so the school keeps a copy of its records.', ['name' => $school->name]));
+        }
+
         $request->validate([
             'name_confirmation' => [
                 'required',
@@ -644,11 +688,15 @@ class SchoolController extends Controller
         ]);
 
         $name = $school->name;
+        $schoolId = $school->id;
         $school->delete();
+
+        // Its photos, result sheets and attachments on Cloudinary go too (queued: can be many files)
+        DeleteSchoolFiles::dispatch($schoolId, $name);
 
         return redirect()
             ->route('super-admin.schools.index')
-            ->with('success', __('School ":name" permanently deleted.', ['name' => $name]));
+            ->with('success', __('School ":name" permanently deleted. Its files are being removed from storage.', ['name' => $name]));
     }
 
     /**
@@ -750,8 +798,11 @@ class SchoolController extends Controller
     /**
      * Remove a school admin (cannot remove the last one).
      */
-    public function destroyAdmin(Request $request, School $school, User $admin): RedirectResponse
+    public function destroyAdmin(Request $request, School $school, string $admin): RedirectResponse
     {
+        // Super admins work across schools — look the user up without the tenant scope
+        $admin = User::withoutGlobalScopes()->findOrFail($admin);
+
         abort_if($admin->school_id !== $school->id || $admin->role !== 'school_admin', 404);
 
         $adminCount = User::withoutGlobalScopes()

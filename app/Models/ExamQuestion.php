@@ -37,6 +37,8 @@ class ExamQuestion extends Model
     protected function casts(): array
     {
         return [
+            'exam_id' => 'integer',
+            'school_id' => 'integer',
             'options' => 'array',
             'points' => 'integer',
             'sort_order' => 'integer',

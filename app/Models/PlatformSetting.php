@@ -32,6 +32,10 @@ class PlatformSetting extends Model
         'feature_default_enable_cbt_exam' => true,
         'feature_default_enable_assessment' => true,
         'feature_default_enable_cbt_assignment' => true,
+        // "Watch video" links on the page guides (YouTube or Vimeo); empty = written steps only
+        'help_video_gradebook' => '',
+        'help_video_cbt_create' => '',
+        'help_video_report_cards' => '',
     ];
 
     /** @var array<string, string> */
@@ -51,6 +55,9 @@ class PlatformSetting extends Model
         'feature_default_enable_cbt_exam' => 'boolean',
         'feature_default_enable_assessment' => 'boolean',
         'feature_default_enable_cbt_assignment' => 'boolean',
+        'help_video_gradebook' => 'string',
+        'help_video_cbt_create' => 'string',
+        'help_video_report_cards' => 'string',
     ];
 
     /** Feature flag keys (convenience list for iteration) */

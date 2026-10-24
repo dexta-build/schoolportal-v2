@@ -7,6 +7,7 @@ namespace App\Livewire;
 use App\Models\SchoolClass;
 use App\Models\SchoolLevel;
 use App\Models\User;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class StudentSelector extends Component
@@ -19,7 +20,8 @@ class StudentSelector extends Component
 
     public string $search = '';
 
-    /** @var array<int> Only show classes the user has access to (empty = all) */
+    /** @var array<int> Only show classes the user has access to (empty = all). Locked: a teacher must not widen it. */
+    #[Locked]
     public array $restrictClassIds = [];
 
     public function mount(?int $levelId = null, ?int $classId = null, ?int $studentId = null, array $restrictClassIds = []): void
@@ -80,6 +82,11 @@ class StudentSelector extends Component
     public function getStudentsProperty()
     {
         if (! $this->classId) {
+            return collect();
+        }
+
+        // classId comes from the browser — keep it within the classes this user may see
+        if (! empty($this->restrictClassIds) && ! in_array($this->classId, array_map('intval', $this->restrictClassIds), true)) {
             return collect();
         }
 

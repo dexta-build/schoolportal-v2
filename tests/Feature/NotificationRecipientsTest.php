@@ -89,6 +89,9 @@ class NotificationRecipientsTest extends TestCase
 
     public function test_published_cbt_reaches_the_class_and_their_parents_only(): void
     {
+        // Parents only hear about CBTs when the school shows them CBT results
+        $this->school->update(['settings' => array_replace_recursive($this->school->settings ?? [], ['portal' => ['enable_cbt_results_for_parents' => true]])]);
+
         $exam = Exam::create([
             'school_id' => $this->school->id,
             'class_id' => $this->class->id,
@@ -194,6 +197,65 @@ class NotificationRecipientsTest extends TestCase
 
         Notification::assertSentTo($this->admin, SubmissionPendingNotification::class);
         Notification::assertNotSentTo($otherAdmin, SubmissionPendingNotification::class);
+    }
+
+    public function test_deactivated_students_and_parents_are_not_notified(): void
+    {
+        $activeClassmate = $this->studentIn($this->class);
+        $this->student->update(['is_active' => false]);
+        $this->parent->update(['is_active' => false]);
+
+        $exam = Exam::create([
+            'school_id' => $this->school->id,
+            'class_id' => $this->class->id,
+            'subject_id' => Subject::create(['school_id' => $this->school->id, 'name' => 'Maths', 'slug' => 'maths', 'short_name' => 'MTH', 'category' => 'science', 'is_active' => true])->id,
+            'session_id' => $this->session->id,
+            'term_id' => $this->term->id,
+            'title' => 'Maths Test',
+            'category' => 'exam',
+            'source_type' => 'manual',
+            'max_score' => 10,
+            'total_points' => 10,
+            'passing_score' => 50,
+            'max_attempts' => 1,
+            'status' => 'approved',
+            'is_published' => true,
+            'published_at' => now(),
+            'created_by' => $this->admin->id,
+        ]);
+        $result = Result::create([
+            'school_id' => $this->school->id,
+            'student_id' => $this->student->id,
+            'session_id' => $this->session->id,
+            'term_id' => $this->term->id,
+            'class_id' => $this->class->id,
+            'file_url' => 'https://res.cloudinary.com/demo/raw/upload/r.pdf',
+            'status' => 'approved',
+        ]);
+        $report = StudentTermReport::withoutGlobalScopes()->create([
+            'school_id' => $this->school->id,
+            'student_id' => $this->student->id,
+            'class_id' => $this->class->id,
+            'session_id' => $this->session->id,
+            'term_id' => $this->term->id,
+            'report_type' => 'full_term',
+            'status' => 'published',
+        ]);
+
+        $service = app(NotificationService::class);
+        $service->notifyExamPublished($exam);
+        $service->notifyResultUploaded($result);
+        $service->notifyReportCardPublished($report);
+
+        Notification::assertNotSentTo($this->student, NewExamNotification::class);
+        Notification::assertNotSentTo($this->parent, NewExamNotification::class);
+        Notification::assertNotSentTo($this->student, NewResultNotification::class);
+        Notification::assertNotSentTo($this->parent, NewResultNotification::class);
+        Notification::assertNotSentTo($this->student, ReportCardPublishedNotification::class);
+        Notification::assertNotSentTo($this->parent, ReportCardPublishedNotification::class);
+
+        // Active classmates are still notified
+        Notification::assertSentTo($activeClassmate, NewExamNotification::class);
     }
 
     public function test_approval_reaches_the_teacher(): void
