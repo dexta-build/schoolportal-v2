@@ -22,16 +22,16 @@ class ContentController extends Controller
         $totals = [
             'quizzes' => Quiz::withoutGlobalScopes()->count(),
             'games' => Game::withoutGlobalScopes()->count(),
-            'exams' => Exam::withoutGlobalScopes()->count(),
-            'results' => Result::withoutGlobalScopes()->count(),
-            'assignments' => Assignment::withoutGlobalScopes()->count(),
+            'exams' => Exam::withoutGlobalScope('tenant')->count(),
+            'results' => Result::withoutGlobalScope('tenant')->count(),
+            'assignments' => Assignment::withoutGlobalScope('tenant')->count(),
         ];
 
         $pendingCounts = [
             'quizzes' => Quiz::withoutGlobalScopes()->where('status', 'pending')->count(),
-            'exams' => Exam::withoutGlobalScopes()->where('status', 'pending')->count(),
-            'results' => Result::withoutGlobalScopes()->where('status', 'pending')->count(),
-            'assignments' => Assignment::withoutGlobalScopes()->where('status', 'pending')->count(),
+            'exams' => Exam::withoutGlobalScope('tenant')->where('status', 'pending')->count(),
+            'results' => Result::withoutGlobalScope('tenant')->where('status', 'pending')->count(),
+            'assignments' => Assignment::withoutGlobalScope('tenant')->where('status', 'pending')->count(),
         ];
 
         $query = School::tenants()

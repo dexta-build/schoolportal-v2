@@ -3,7 +3,9 @@
         <x-admin-header
             :title="__('Create ' . $categoryLabel)"
             :description="__('Generate questions with AI or create them manually. It will be submitted for admin approval.')"
-        />
+        >
+            <x-page-help topic="cbt-create" />
+        </x-admin-header>
 
         @if (session('error'))
             <flux:callout variant="danger" icon="x-circle">{{ session('error') }}</flux:callout>

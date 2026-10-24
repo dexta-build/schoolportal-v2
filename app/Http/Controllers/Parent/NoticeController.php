@@ -7,6 +7,8 @@ namespace App\Http\Controllers\Parent;
 use App\Http\Controllers\Controller;
 use App\Models\Notice;
 use App\Models\User;
+use App\Support\RemovedItemPage;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 class NoticeController extends Controller
@@ -54,13 +56,12 @@ class NoticeController extends Controller
         return view('parent.notices.index', compact('notices'));
     }
 
-    public function show(Notice $notice): View
+    public function show(Notice $notice): View|Response
     {
-        abort_unless(
-            $notice->is_published
-            && ($notice->expires_at === null || $notice->expires_at->gte(now())),
-            404
-        );
+        // Published, not expired, and addressed to this parent or one of their children's classes
+        if (! $notice->isVisibleTo(auth()->user())) {
+            return RemovedItemPage::response('notice', 'parent.notices.index');
+        }
 
         $notice->load('creator:id,name');
 

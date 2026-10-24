@@ -21,6 +21,8 @@ class PlatformAnnouncementRead extends Model
     protected function casts(): array
     {
         return [
+            'announcement_id' => 'integer',
+            'school_id' => 'integer',
             'read_at' => 'datetime',
         ];
     }

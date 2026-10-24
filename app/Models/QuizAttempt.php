@@ -40,6 +40,10 @@ class QuizAttempt extends Model
             'quiz_id' => 'integer',
             'student_id' => 'integer',
             'school_id' => 'integer',
+            'attempt_number' => 'integer',
+            'score' => 'integer',
+            'total_points' => 'integer',
+            'time_spent_seconds' => 'integer',
             'percentage' => 'decimal:2',
             'passed' => 'boolean',
             'started_at' => 'datetime',
@@ -70,7 +74,7 @@ class QuizAttempt extends Model
     public function expiresAt(): ?CarbonInterface
     {
         return $this->quiz->time_limit_minutes
-            ? $this->started_at->copy()->addMinutes($this->quiz->time_limit_minutes)
+            ? $this->started_at->copy()->addMinutes((int) $this->quiz->time_limit_minutes)
             : null;
     }
 

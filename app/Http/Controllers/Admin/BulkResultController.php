@@ -152,8 +152,10 @@ class BulkResultController extends Controller
                     ->first();
 
                 if ($existing?->file_public_id) {
-                    $uploadService->delete($existing->file_public_id);
+                    $uploadService->deleteAnyType($existing->file_public_id);
                 }
+
+                Result::releaseDeletedSlot((int) $item['student_id'], (int) $request->input('session_id'), (int) $request->input('term_id'));
 
                 Result::updateOrCreate(
                     [

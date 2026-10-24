@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 
 class StudentTermReport extends Model
@@ -41,6 +42,9 @@ class StudentTermReport extends Model
         'signature_url',
         'signature_public_id',
         'status',
+        'needs_regeneration',
+        'revision_count',
+        'revised_at',
         'approved_by',
         'approved_at',
         'published_at',
@@ -49,7 +53,15 @@ class StudentTermReport extends Model
 
     protected function casts(): array
     {
+        // IDs cast explicitly: some hosting MySQL drivers return every column as a string
         return [
+            'school_id' => 'integer',
+            'student_id' => 'integer',
+            'class_id' => 'integer',
+            'session_id' => 'integer',
+            'term_id' => 'integer',
+            'teacher_id' => 'integer',
+            'approved_by' => 'integer',
             'subject_scores_snapshot' => 'array',
             'grading_scale_snapshot' => 'array',
             'report_type' => 'string',
@@ -67,7 +79,15 @@ class StudentTermReport extends Model
             'approved_at' => 'datetime',
             'published_at' => 'datetime',
             'finalized_at' => 'datetime',
+            'needs_regeneration' => 'boolean',
+            'revision_count' => 'integer',
+            'revised_at' => 'datetime',
         ];
+    }
+
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(StudentTermReportRevision::class)->orderByDesc('revision_number');
     }
 
     public function student(): BelongsTo

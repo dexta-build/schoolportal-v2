@@ -10,6 +10,7 @@ use App\Models\SchoolClass;
 use App\Models\SchoolLevel;
 use App\Services\FileUploadService;
 use App\Services\NotificationService;
+use App\Services\RecentlyDeletedService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -226,36 +227,17 @@ class NoticeController extends Controller
             ->with('success', __('Notice updated.'));
     }
 
-    public function destroy(Notice $notice, FileUploadService $uploadService): RedirectResponse
+    /**
+     * Deleted notices are kept for Notice::RESTORE_DAYS so the delete can be undone; files stay until then.
+     */
+    public function destroy(Notice $notice): RedirectResponse
     {
         abort_unless($notice->created_by === auth()->id(), 403);
-
-        if ($notice->file_public_id) {
-            try {
-                $uploadService->delete($notice->file_public_id);
-            } catch (\Throwable $e) {
-                Log::warning('Could not delete notice file from Cloudinary', [
-                    'public_id' => $notice->file_public_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        if ($notice->image_public_id) {
-            try {
-                $uploadService->delete($notice->image_public_id);
-            } catch (\Throwable $e) {
-                Log::warning('Could not delete notice image from Cloudinary', [
-                    'public_id' => $notice->image_public_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
 
         $notice->delete();
 
         return redirect()->route('admin.notices.index')
-            ->with('success', __('Notice deleted.'));
+            ->with('undo', app(RecentlyDeletedService::class)->deleted($notice, 'admin'));
     }
 
     public function unpublish(Notice $notice): RedirectResponse

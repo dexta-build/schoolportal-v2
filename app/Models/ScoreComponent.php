@@ -27,6 +27,7 @@ class ScoreComponent extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
             'max_score' => 'integer',
             'weight' => 'integer',
             'sort_order' => 'integer',

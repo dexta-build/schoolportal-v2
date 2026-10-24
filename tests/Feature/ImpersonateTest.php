@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\ImpersonationReadOnly;
+use App\Models\AuditLog;
 use App\Models\School;
+use App\Models\SchoolAnnouncement;
 use App\Models\User;
 use App\Services\SchoolSetupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class ImpersonateTest extends TestCase
@@ -370,6 +376,81 @@ class ImpersonateTest extends TestCase
 
         // Must not redirect to password change — 200 or redirect to same dashboard is acceptable
         $this->assertNotEquals(route('password.change'), $dashboardResponse->headers->get('Location'));
+    }
+
+    // -------------------------------------------------------------------------
+    // Read-only while viewing a school
+    // -------------------------------------------------------------------------
+
+    private function impersonating(): self
+    {
+        return $this->actingAs($this->schoolAdmin)->withSession([
+            'impersonating_original_id' => $this->superAdmin->id,
+            'school_id' => $this->targetSchool->id,
+        ]);
+    }
+
+    public function test_viewing_a_school_can_read_pages(): void
+    {
+        app()->forgetInstance('current.school');
+
+        $this->impersonating()->get(route('admin.dashboard'))->assertOk();
+    }
+
+    public function test_viewing_a_school_cannot_submit_changes(): void
+    {
+        app()->forgetInstance('current.school');
+
+        $this->impersonating()
+            ->from(route('admin.announcements.index'))
+            ->post(route('admin.announcements.store'), ['title' => 'Added by platform', 'content' => 'Should not be saved'])
+            ->assertRedirect(route('admin.announcements.index'))
+            ->assertSessionHas('impersonation_blocked');
+
+        $this->assertFalse(SchoolAnnouncement::withoutGlobalScopes()->where('title', 'Added by platform')->exists());
+    }
+
+    public function test_livewire_actions_cannot_write_to_the_database_while_viewing_a_school(): void
+    {
+        $request = Request::create('/livewire/update', 'POST', server: ['HTTP_X_LIVEWIRE' => '1']);
+        $request->setLaravelSession(tap(app('session.store'))->put('impersonating_original_id', $this->superAdmin->id));
+        $this->app->instance('request', $request);
+
+        $middleware = new ImpersonationReadOnly;
+
+        // School data: refused, whatever the write path (here a bulk query that skips model events)
+        try {
+            $middleware->handle($request, function () {
+                DB::table('users')->where('id', $this->schoolAdmin->id)->update(['name' => 'Changed by platform']);
+
+                return response('ok');
+            });
+            $this->fail('A database write was allowed while viewing a school');
+        } catch (HttpException $e) {
+            $this->assertSame(403, $e->getStatusCode());
+            $this->assertSame('1', $e->getHeaders()['X-Impersonation-Read-Only'] ?? null);
+        }
+        $this->assertNotSame('Changed by platform', $this->schoolAdmin->fresh()->name);
+
+        // Framework bookkeeping (cache, sessions) still works, so pages keep functioning
+        $middleware->handle($request, function () {
+            DB::table('cache')->insert(['key' => 'read-only-test', 'value' => 'x', 'expiration' => time() + 60]);
+
+            return response('ok');
+        });
+        $this->assertTrue(DB::table('cache')->where('key', 'read-only-test')->exists());
+    }
+
+    public function test_stopping_and_logging_out_still_work_while_viewing_a_school(): void
+    {
+        app()->forgetInstance('current.school');
+
+        $this->impersonating()->post(route('impersonate.stop'))->assertRedirect();
+        $this->assertSame($this->superAdmin->id, Auth::id());
+        $this->assertTrue(AuditLog::withoutGlobalScopes()->where('action', 'school.impersonation_stopped')->exists());
+
+        $this->impersonating()->post(route('logout'))->assertRedirect();
+        $this->assertGuest();
     }
 
     public function test_school_setup_service_creates_admin_with_email_verified(): void

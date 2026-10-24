@@ -56,28 +56,20 @@
                                     <flux:badge color="zinc" size="sm">{{ __('Inactive') }}</flux:badge>
                                 @endif
                             </flux:table.cell>
-                            <flux:table.cell>
-                                <div class="flex items-center gap-1">
-                                    <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.classes.edit', $class) }}" wire:navigate aria-label="{{ __('Edit :name', ['name' => $class->name]) }}" />
+                            <flux:table.cell class="text-end">
+                                <x-row-actions :label="__('Actions for :name', ['name' => $class->name])">
+                                    <flux:menu.item icon="pencil-square" href="{{ route('admin.classes.edit', $class) }}" wire:navigate>{{ __('Edit class') }}</flux:menu.item>
+                                    <flux:menu.separator />
                                     @if ($class->students_count === 0)
-                                        <x-confirm-delete
+                                        <x-row-actions.delete
                                             :action="route('admin.classes.destroy', $class)"
-                                            :title="__('Delete Class')"
-                                            :message="__('Are you sure you want to delete this class? This action cannot be undone.')"
-                                            :ariaLabel="__('Delete :name', ['name' => $class->name])"
+                                            :title="__('Delete :name?', ['name' => $class->name])"
+                                            :message="__('This class has no students. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
                                         />
                                     @else
-                                        <flux:button
-                                            type="button"
-                                            variant="subtle"
-                                            size="xs"
-                                            icon="trash"
-                                            disabled
-                                            title="{{ __('Move students out of this class before deleting it.') }}"
-                                            aria-label="{{ __('Cannot delete :name while students are assigned', ['name' => $class->name]) }}"
-                                        />
+                                        <flux:menu.item icon="trash" disabled>{{ __('Delete (move students out first)') }}</flux:menu.item>
                                     @endif
-                                </div>
+                                </x-row-actions>
                             </flux:table.cell>
                         </flux:table.row>
                     @empty

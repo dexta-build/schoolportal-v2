@@ -255,6 +255,8 @@
                     @csrf
                     @method('PUT')
                     {{-- Pass through all other settings unchanged --}}
+                    {{-- Marks this as the form that carries the feature-flag checkboxes --}}
+                    <input type="hidden" name="feature_flags_form" value="1">
                     <input type="hidden" name="platform_name" value="{{ old('platform_name', $settings['platform_name']) }}">
                     <input type="hidden" name="default_free_ai_credits" value="{{ old('default_free_ai_credits', $settings['default_free_ai_credits']) }}">
                     <input type="hidden" name="allowed_file_types" value="{{ old('allowed_file_types', $settings['allowed_file_types']) }}">
@@ -305,6 +307,37 @@
                             </div>
                         @endforeach
                     </div>
+
+                    <flux:button variant="primary" type="submit">{{ __('Save') }}</flux:button>
+                </form>
+            </div>
+
+            {{-- ── Help Videos ─────────────────────────────────────── --}}
+            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+                <div class="px-6 py-4 border-b border-zinc-100 dark:border-zinc-700 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+                        <flux:icon.play-circle class="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Help Videos') }}</h2>
+                        <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Shown as "Watch video" in the "How this page works" guides, for every school. Leave empty to show the written steps only.') }}</p>
+                    </div>
+                </div>
+                <form method="POST" action="{{ route('super-admin.settings.help-videos') }}" class="p-6 space-y-4">
+                    @csrf
+                    @method('PUT')
+
+                    @foreach (\App\Support\PageHelp::VIDEO_SETTINGS as $topic => $settingKey)
+                        <flux:input
+                            :name="$settingKey"
+                            type="url"
+                            :label="__(\App\Support\PageHelp::TOPIC_NAMES[$topic])"
+                            :value="old($settingKey, $settings[$settingKey] ?? '')"
+                            placeholder="https://www.youtube.com/watch?v=..."
+                        />
+                    @endforeach
+
+                    <flux:text class="text-xs">{{ __('YouTube or Vimeo links. On YouTube, upload as "Unlisted" so only people with the link can find it.') }}</flux:text>
 
                     <flux:button variant="primary" type="submit">{{ __('Save') }}</flux:button>
                 </form>

@@ -276,6 +276,18 @@
                 </dl>
                 <p class="text-xs text-zinc-500 mt-3">{{ __('Contact platform administrator to change domain settings.') }}</p>
             </div>
+
+            {{-- Full data export: the school's own backup copy --}}
+            <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-6">
+                <flux:heading size="sm" class="mb-2">{{ __('Download all school data') }}</flux:heading>
+                <flux:text class="text-sm">
+                    {{ __('A ZIP file with every record of your school as spreadsheets (CSV, opens in Excel): students, parents, teachers, classes, scores, report cards, CBT, notices, audit logs and more, plus links to your uploaded files. Passwords are never included.') }}
+                </flux:text>
+                <p class="mt-2 text-xs text-zinc-500">{{ __('Keep it somewhere safe: it contains personal information about your students and staff. Each download is recorded in the audit log.') }}</p>
+                <flux:button class="mt-4" icon="arrow-down-tray" href="{{ route('admin.settings.export-data') }}">
+                    {{ __('Download data (ZIP)') }}
+                </flux:button>
+            </div>
         </div>
     </div>
 </x-layouts::app>

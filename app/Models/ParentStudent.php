@@ -22,6 +22,15 @@ class ParentStudent extends Model
         'school_id',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'parent_id' => 'integer',
+            'student_id' => 'integer',
+            'school_id' => 'integer',
+        ];
+    }
+
     public function parent(): BelongsTo
     {
         return $this->belongsTo(User::class, 'parent_id');

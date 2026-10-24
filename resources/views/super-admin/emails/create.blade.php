@@ -14,11 +14,10 @@
                  dragging: false,
                  maxFiles: 5,
                  maxSizeBytes: 5 * 1024 * 1024,
+                 skippedFiles: [],
                  addFiles(newFiles) {
-                     const oversized = Array.from(newFiles).filter(f => f.size > this.maxSizeBytes).map(f => f.name);
-                     if (oversized.length) {
-                         alert('The following file(s) exceed the 5 MB limit and were skipped:\n' + oversized.join('\n'));
-                     }
+                     // Shown inline under the upload box (no browser alert)
+                     this.skippedFiles = Array.from(newFiles).filter(f => f.size > this.maxSizeBytes).map(f => f.name);
                      const valid = Array.from(newFiles).filter(f => f.size <= this.maxSizeBytes);
                      const combined = [...this.files, ...valid].slice(0, this.maxFiles);
                      this.files = combined;
@@ -255,6 +254,15 @@
                                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.txt"
                                class="sr-only" />
                     </label>
+
+                    {{-- Files over the size limit --}}
+                    <div x-show="skippedFiles.length" x-cloak role="alert"
+                         class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+                        <p class="font-medium">{{ __('These files are over 5 MB and were not attached:') }}</p>
+                        <ul class="mt-1 list-disc pl-5">
+                            <template x-for="name in skippedFiles" :key="name"><li x-text="name"></li></template>
+                        </ul>
+                    </div>
 
                     {{-- Selected file list --}}
                     <template x-if="files.length > 0">

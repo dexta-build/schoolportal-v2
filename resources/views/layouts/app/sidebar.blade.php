@@ -96,6 +96,19 @@
         {{ $slot }}
 
         @if (session('impersonating_original_id'))
+            {{-- A change was refused because viewing a school is read-only (form posts flash it;
+                 Livewire actions raise the impersonation-read-only event from resources/js/app.js) --}}
+            <div
+                x-data="{ show: @js((bool) session('impersonation_blocked')), timer: null }"
+                x-init="if (show) timer = setTimeout(() => show = false, 6000)"
+                x-on:impersonation-read-only.window="show = true; clearTimeout(timer); timer = setTimeout(() => show = false, 6000)"
+                x-show="show" x-transition x-cloak
+                class="fixed bottom-12 inset-x-0 z-50 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-lg bg-zinc-900 px-4 py-2.5 text-sm text-white shadow-lg dark:bg-white dark:text-zinc-900"
+                role="alert"
+            >
+                {{ __('You are viewing this school in read-only mode. Changes can only be made by the school\'s own staff.') }}
+            </div>
+
             {{-- Impersonation banner — fixed at bottom so it doesn't push content --}}
             <div class="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-amber-500 px-4 py-2.5 text-sm font-medium text-white shadow-lg dark:bg-amber-600" role="alert" aria-live="polite">
                 <div class="flex min-w-0 items-center gap-2">
@@ -104,11 +117,13 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
                     </svg>
                     <span class="truncate">
-                        {{ __('Impersonating') }}:
+                        {{ __('Viewing as') }}
                         <strong>{{ auth()->user()->name }}</strong>
                         @if (app()->bound('current.school'))
                             &mdash; {{ app('current.school')->name }}
                         @endif
+                        &middot; <strong>{{ __('Read-only') }}</strong>
+                        <span class="hidden sm:inline">&mdash; {{ __('changes can only be made by the school\'s own staff') }}</span>
                     </span>
                 </div>
                 <form method="POST" action="{{ route('impersonate.stop') }}" class="shrink-0">
@@ -117,7 +132,7 @@
                         type="submit"
                         class="rounded border border-white/50 px-3 py-1 text-xs font-semibold transition hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-white/70 dark:hover:bg-amber-700"
                     >
-                        {{ __('Stop Impersonating') }}
+                        {{ __('Stop viewing') }}
                     </button>
                 </form>
             </div>
@@ -128,6 +143,10 @@
                 <flux:toast duration="8000" />
             </flux:toast.group>
         @endpersist
+
+        <x-page-expired-dialog />
+        <x-app-confirm-dialog />
+        <x-undo-toast />
 
         {{-- ── Offline Banner (student only) ─────────────────────────────────── --}}
         @auth

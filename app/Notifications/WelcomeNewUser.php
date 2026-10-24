@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
+use App\Helpers\PortalUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -48,7 +49,7 @@ class WelcomeNewUser extends Notification implements ShouldQueue
         }
 
         return $message
-            ->action(__('Log In to Portal'), url('/portal/login'))
+            ->action(__('Log In to Portal'), PortalUrl::forRecipient($notifiable, '/portal/login'))
             ->line(__('If you have any questions, please contact your school administrator.'))
             ->salutation(__('Regards, :school', ['school' => $this->schoolName]));
     }

@@ -11,10 +11,12 @@ use App\Models\Game;
 use App\Models\Notice;
 use App\Models\Quiz;
 use App\Models\Result;
+use App\Models\ScoreAmendment;
 use App\Models\StudentTermReport;
 use App\Models\TeacherAction;
 use App\Notifications\SubmissionReviewed;
 use App\Services\NotificationService;
+use App\Services\ScoreCorrectionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -98,7 +100,19 @@ class ApprovalController extends Controller
                 ->whereIn('id', $reportCardIds)->get()->keyBy('id')
             : collect();
 
-        return view('admin.approvals.index', compact('actions', 'pendingCount', 'status', 'notices', 'results', 'assignments', 'exams', 'reportCards'));
+        // Eager-load score correction requests for their detail line
+        $scoreAmendmentIds = $actions->getCollection()
+            ->where('entity_type', 'score_amendment')
+            ->pluck('entity_id')
+            ->unique()
+            ->toArray();
+
+        $scoreAmendments = $scoreAmendmentIds
+            ? ScoreAmendment::with(['student:id,name', 'subject:id,name', 'scoreComponent:id,name,max_score', 'class:id,name', 'term:id,name'])
+                ->whereIn('id', $scoreAmendmentIds)->get()->keyBy('id')
+            : collect();
+
+        return view('admin.approvals.index', compact('actions', 'pendingCount', 'status', 'notices', 'results', 'assignments', 'exams', 'reportCards', 'scoreAmendments'));
     }
 
     public function approve(TeacherAction $action): RedirectResponse
@@ -156,7 +170,7 @@ class ApprovalController extends Controller
         }
 
         return redirect()->route('admin.approvals.index')
-            ->with('success', __(':type approved.', ['type' => ucfirst($action->entity_type)]));
+            ->with('success', __(':type approved.', ['type' => ucfirst(str_replace('_', ' ', $action->entity_type))]));
     }
 
     public function bulkApprove(Request $request): RedirectResponse
@@ -266,7 +280,7 @@ class ApprovalController extends Controller
                 'rejection_reason' => $validated['rejection_reason'],
             ]);
 
-            $this->updateEntityStatus($action, 'rejected');
+            $this->updateEntityStatus($action, 'rejected', $validated['rejection_reason']);
 
             $teacher = $action->teacher;
             if ($teacher?->email) {
@@ -299,7 +313,7 @@ class ApprovalController extends Controller
         ]);
 
         // Update the related entity status
-        $this->updateEntityStatus($action, 'rejected');
+        $this->updateEntityStatus($action, 'rejected', $validated['rejection_reason']);
 
         // Notify the teacher if they have an email
         $teacher = $action->teacher;
@@ -315,11 +329,24 @@ class ApprovalController extends Controller
         }
 
         return redirect()->route('admin.approvals.index')
-            ->with('success', __(':type rejected.', ['type' => ucfirst($action->entity_type)]));
+            ->with('success', __(':type rejected.', ['type' => ucfirst(str_replace('_', ' ', $action->entity_type))]));
     }
 
-    private function updateEntityStatus(TeacherAction $action, string $status): void
+    private function updateEntityStatus(TeacherAction $action, string $status, ?string $reason = null): void
     {
+        // Score corrections are applied through the correction service (audit, report staleness)
+        if ($action->entity_type === 'score_amendment') {
+            $amendment = ScoreAmendment::find($action->entity_id);
+
+            if ($amendment?->isPending()) {
+                $status === 'approved'
+                    ? app(ScoreCorrectionService::class)->approve($amendment, auth()->user())
+                    : app(ScoreCorrectionService::class)->reject($amendment, auth()->user(), $reason ?? __('Rejected'));
+            }
+
+            return;
+        }
+
         $model = match ($action->entity_type) {
             'result' => Result::find($action->entity_id),
             'assignment' => Assignment::find($action->entity_id),

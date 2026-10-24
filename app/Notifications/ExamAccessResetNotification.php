@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
-use Illuminate\Support\Carbon;
+use Carbon\CarbonInterface;
 
 class ExamAccessResetNotification extends DatabaseNotification
 {
@@ -12,7 +12,7 @@ class ExamAccessResetNotification extends DatabaseNotification
         private readonly string $examTitle,
         private readonly string $category,
         private readonly int $examId,
-        private readonly Carbon $availableUntil,
+        private readonly CarbonInterface $availableUntil,
     ) {}
 
     protected function icon(): string

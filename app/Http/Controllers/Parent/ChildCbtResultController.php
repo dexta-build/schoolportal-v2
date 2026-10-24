@@ -18,6 +18,9 @@ class ChildCbtResultController extends Controller
 
     public function index(User $child): View
     {
+        // The school decides whether parents see CBT results (Settings → CBT Results for Parents)
+        abort_unless(app('current.school')->featureEnabled('enable_cbt_results_for_parents'), 404);
+
         $parent = auth()->user();
         $child->loadMissing('studentProfile.class');
 

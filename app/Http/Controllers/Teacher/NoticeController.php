@@ -9,6 +9,7 @@ use App\Models\Notice;
 use App\Models\SchoolLevel;
 use App\Models\TeacherAction;
 use App\Services\FileUploadService;
+use App\Services\RecentlyDeletedService;
 use App\Traits\NotifiesAdminsOnSubmission;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,6 +41,21 @@ class NoticeController extends Controller
         }
 
         return view('teacher.notices.index', compact('notices', 'rejectionReasons'));
+    }
+
+    /**
+     * Read a school notice addressed to teachers (opened from a notification).
+     */
+    public function show(Notice $notice): View
+    {
+        $teacher = auth()->user();
+
+        // Their own notice, or a school notice addressed to them
+        abort_unless((int) $notice->created_by === (int) $teacher->id || $notice->isVisibleTo($teacher), 404);
+
+        $notice->load('creator:id,name');
+
+        return view('teacher.notices.show', compact('notice'));
     }
 
     public function create(): View
@@ -315,31 +331,16 @@ class NoticeController extends Controller
             ->with('success', __('Notice published.'));
     }
 
-    public function destroy(Notice $notice, FileUploadService $uploadService): RedirectResponse
+    /**
+     * Deleted notices are kept for Notice::RESTORE_DAYS so the delete can be undone; files stay until then.
+     */
+    public function destroy(Notice $notice): RedirectResponse
     {
-        $teacher = auth()->user();
-        abort_unless($notice->created_by === $teacher->id, 403);
-
-        if ($notice->file_public_id) {
-            try {
-                $uploadService->delete($notice->file_public_id);
-            } catch (\Throwable $e) {
-                Log::warning('Could not delete notice file from Cloudinary', [
-                    'public_id' => $notice->file_public_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        // Also clean up the teacher action record
-        TeacherAction::where('entity_type', 'notice')
-            ->where('entity_id', $notice->id)
-            ->where('teacher_id', $teacher->id)
-            ->delete();
+        abort_unless($notice->created_by === auth()->id(), 403);
 
         $notice->delete();
 
         return redirect()->route('teacher.notices.index')
-            ->with('success', __('Notice deleted.'));
+            ->with('undo', app(RecentlyDeletedService::class)->deleted($notice, 'teacher'));
     }
 }

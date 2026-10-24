@@ -79,6 +79,10 @@ class AssignmentController extends Controller
             abort(403, 'You can only create assignments for your assigned classes.');
         }
 
+        if (! Assignment::claimWeek((int) $validated['class_id'], (int) $validated['session_id'], (int) $validated['term_id'], (int) $validated['week_number'])) {
+            return back()->withInput()->withErrors(['week_number' => __('This class already has an assignment for week :week this term. Edit that one instead.', ['week' => $validated['week_number']])]);
+        }
+
         $fileUrl = $validated['file_url'] ?? null;
         $filePublicId = null;
 
@@ -199,6 +203,10 @@ class AssignmentController extends Controller
 
         if (! in_array((int) $validated['class_id'], $classIds, true)) {
             abort(403, 'You can only create assignments for your assigned classes.');
+        }
+
+        if (! Assignment::claimWeek((int) $validated['class_id'], $assignment->session_id, $assignment->term_id, (int) $validated['week_number'], $assignment->id)) {
+            return back()->withInput()->withErrors(['week_number' => __('This class already has an assignment for week :week this term. Edit that one instead.', ['week' => $validated['week_number']])]);
         }
 
         $data = [

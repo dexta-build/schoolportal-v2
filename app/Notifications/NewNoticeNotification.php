@@ -50,7 +50,7 @@ class NewNoticeNotification extends DatabaseNotification
 
         return match ($role) {
             'parent' => url("/portal/parent/notices/{$this->noticeId}"),
-            'teacher' => url('/portal/teacher/notices'),
+            'teacher' => url("/portal/teacher/notices/{$this->noticeId}"),
             default => url("/portal/student/notices/{$this->noticeId}"),
         };
     }

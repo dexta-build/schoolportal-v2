@@ -53,7 +53,7 @@
                             {{ $email->sent_at?->format('M j, Y') ?? $email->created_at->format('M j, Y') }}
                         </flux:table.cell>
                         <flux:table.cell>
-                            <flux:button variant="subtle" size="xs" icon="eye" :href="route('super-admin.emails.show', $email)" wire:navigate />
+                            <flux:button variant="subtle" size="xs" icon="eye" :href="route('super-admin.emails.show', $email)" wire:navigate>{{ __('View') }}</flux:button>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty

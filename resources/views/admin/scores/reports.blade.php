@@ -5,7 +5,9 @@
         <x-admin-header
             :title="__('Term Report Cards')"
             :description="__('Review, approve, and publish student report cards.')"
-        />
+        >
+            <x-page-help topic="report-cards" />
+        </x-admin-header>
 
         @if (session('success'))
             <flux:callout variant="success" icon="check-circle">{{ session('success') }}</flux:callout>
@@ -295,16 +297,17 @@
                                     </td>
                                     <td class="px-4 py-3 text-right">
                                         <div class="flex items-center justify-end gap-1">
-                                            <flux:button variant="subtle" size="xs" icon="eye" href="{{ route('admin.scores.reports.show', $report) }}" wire:navigate />
-                                            @if (!in_array($report->status, ['published']))
-                                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.scores.reports.edit-data', $report) }}" wire:navigate />
-                                            @endif
-                                            <a href="{{ route('admin.scores.reports.download', $report) }}">
-                                                <flux:button variant="subtle" size="xs" icon="arrow-down-tray" />
-                                            </a>
+                                            {{-- Approving is the job waiting on this row, so it stays visible --}}
                                             @if ($report->status === 'pending_approval')
-                                                <flux:button variant="subtle" size="xs" icon="check-badge" x-data x-on:click="$dispatch('open-approve-modal', { reportId: {{ $report->id }}, studentName: '{{ addslashes($report->student->name ?? '') }}' })" />
+                                                <flux:button variant="primary" size="xs" icon="check-badge" x-data x-on:click="$dispatch('open-approve-modal', { reportId: {{ $report->id }}, studentName: {{ Js::from($report->student->name ?? '') }} })">{{ __('Approve') }}</flux:button>
                                             @endif
+                                            <x-row-actions :label="__('Actions for :name\'s report card', ['name' => $report->student->name ?? __('student')])">
+                                                <flux:menu.item icon="eye" href="{{ route('admin.scores.reports.show', $report) }}" wire:navigate>{{ __('View report card') }}</flux:menu.item>
+                                                @if (!in_array($report->status, ['published']))
+                                                    <flux:menu.item icon="pencil-square" href="{{ route('admin.scores.reports.edit-data', $report) }}" wire:navigate>{{ __('Edit comments & attendance') }}</flux:menu.item>
+                                                @endif
+                                                <flux:menu.item icon="arrow-down-tray" href="{{ route('admin.scores.reports.download', $report) }}">{{ __('Download PDF') }}</flux:menu.item>
+                                            </x-row-actions>
                                         </div>
                                     </td>
                                 </tr>

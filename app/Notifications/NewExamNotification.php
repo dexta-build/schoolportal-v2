@@ -49,8 +49,9 @@ class NewExamNotification extends DatabaseNotification
             default => 'exams',
         };
 
+        // Parents have a single CBT page covering exams, assessments and assignments
         if ($this->recipientRole === 'parent') {
-            return url("/portal/parent/{$prefix}");
+            return url('/portal/parent/cbt');
         }
 
         return url("/portal/student/{$prefix}");

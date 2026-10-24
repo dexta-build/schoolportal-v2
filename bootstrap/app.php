@@ -3,6 +3,7 @@
 use App\Http\Middleware\CheckMaintenanceMode;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\ForcePasswordChange;
+use App\Http\Middleware\ImpersonationReadOnly;
 use App\Http\Middleware\ResolveTenant;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SessionTimeout;
@@ -11,6 +12,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -53,7 +55,16 @@ return Application::configure(basePath: dirname(__DIR__))
             SessionTimeout::class,
             ForcePasswordChange::class,
             CheckMaintenanceMode::class,
+            ImpersonationReadOnly::class,
         ]);
+
+        // Resolve the school BEFORE route models are loaded, so /students/{student} etc. are
+        // looked up with the tenant scope active. Otherwise a user of one school could open
+        // another school's records by changing the ID in the URL.
+        $middleware->prependToPriorityList(
+            before: SubstituteBindings::class,
+            prepend: ResolveTenant::class,
+        );
 
         // Redirect unauthenticated users to /portal/login
         $middleware->redirectGuestsTo('/portal/login');

@@ -86,21 +86,17 @@
                                 <flux:badge color="zinc" size="sm">{{ __('Inactive') }}</flux:badge>
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="eye" href="{{ route('admin.students.show', $student) }}" wire:navigate aria-label="{{ __('View :name', ['name' => $student->name]) }}" />
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.students.edit', $student) }}" wire:navigate aria-label="{{ __('Edit :name', ['name' => $student->name]) }}" />
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name', ['name' => $student->name])">
+                                <flux:menu.item icon="eye" href="{{ route('admin.students.show', $student) }}" wire:navigate>{{ __('View profile') }}</flux:menu.item>
+                                <flux:menu.item icon="pencil-square" href="{{ route('admin.students.edit', $student) }}" wire:navigate>{{ __('Edit details') }}</flux:menu.item>
+                                <flux:menu.separator />
                                 @if ($student->is_active)
-                                    <flux:modal.trigger :name="'deactivate-student-' . $student->id">
-                                        <flux:button variant="subtle" size="xs" icon="pause-circle" aria-label="{{ __('Deactivate') }}" />
-                                    </flux:modal.trigger>
+                                    <flux:menu.item icon="pause-circle" variant="danger" x-on:click="$flux.modal('deactivate-student-{{ $student->id }}').show()">{{ __('Deactivate (block login)') }}</flux:menu.item>
                                 @else
-                                    <form method="POST" action="{{ route('admin.students.activate', $student) }}" class="inline">
-                                        @csrf
-                                        <flux:button type="submit" variant="subtle" size="xs" icon="play-circle" aria-label="{{ __('Activate') }}" />
-                                    </form>
+                                    <x-row-actions.form :action="route('admin.students.activate', $student)" icon="play-circle">{{ __('Activate (allow login)') }}</x-row-actions.form>
                                 @endif
-                            </div>
+                            </x-row-actions>
 
                             {{-- Deactivate modal --}}
                             @if ($student->is_active)

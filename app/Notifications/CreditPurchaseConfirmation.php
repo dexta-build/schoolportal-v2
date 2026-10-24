@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
+use App\Helpers\PortalUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -37,7 +38,7 @@ class CreditPurchaseConfirmation extends Notification implements ShouldQueue
             ->line(__('**Credits purchased:** :credits', ['credits' => $this->credits]))
             ->line(__('**Amount paid:** :amount', ['amount' => $this->amount]))
             ->line(__('**New balance:** :balance credits', ['balance' => $this->newBalance]))
-            ->action(__('View AI Credits'), url('/portal/admin/credits'))
+            ->action(__('View AI Credits'), PortalUrl::forRecipient($notifiable, '/portal/admin/credits'))
             ->line(__('Thank you for your purchase!'));
     }
 }

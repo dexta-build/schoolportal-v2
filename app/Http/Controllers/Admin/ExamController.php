@@ -24,6 +24,7 @@ use App\Services\ExamGeneratorService;
 use App\Services\ExamGradingService;
 use App\Services\FileUploadService;
 use App\Services\NotificationService;
+use App\Services\RecentlyDeletedService;
 use App\Services\ScoreAggregationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -98,6 +99,8 @@ class ExamController extends Controller
             'category' => $this->resolveCategory(),
             'categoryLabel' => $this->categoryLabel(),
             'routePrefix' => $this->routePrefix(),
+            // The theory grader (bulk-grade / grade-student) needs to know who is grading
+            'role' => 'admin',
         ];
     }
 
@@ -845,7 +848,7 @@ class ExamController extends Controller
         $exam->delete();
 
         return redirect()->route("{$routePrefix}.index")
-            ->with('success', __(':type deleted.', ['type' => $this->categoryLabel()]));
+            ->with('undo', app(RecentlyDeletedService::class)->deleted($exam, 'admin'));
     }
 
     /**

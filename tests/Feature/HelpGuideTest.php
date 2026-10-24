@@ -38,7 +38,10 @@ class HelpGuideTest extends TestCase
             ->assertOk()
             ->assertSee('Search help guide')
             ->assertSee('DX-SchoolPortal')
-            ->assertSee('Teacher Guide');
+            // The guide body is rendered unescaped, so match its heading as raw HTML
+            ->assertSee("Teacher's Complete Guide", false)
+            ->assertDontSee("Student's Complete Guide", false)
+            ->assertDontSee("Parent's Complete Guide", false);
     }
 
     public function test_student_help_uses_student_guide(): void
@@ -50,7 +53,9 @@ class HelpGuideTest extends TestCase
             ->assertOk()
             ->assertSee('Search help guide')
             ->assertSee('DX-SchoolPortal')
-            ->assertSee('Student Guide');
+            ->assertSee("Student's Complete Guide", false)
+            ->assertDontSee("Teacher's Complete Guide", false)
+            ->assertDontSee("Parent's Complete Guide", false);
     }
 
     public function test_parent_help_uses_parent_guide(): void
@@ -62,6 +67,8 @@ class HelpGuideTest extends TestCase
             ->assertOk()
             ->assertSee('Search help guide')
             ->assertSee('DX-SchoolPortal')
-            ->assertSee('Parent Guide');
+            ->assertSee("Parent's Complete Guide", false)
+            ->assertDontSee("Teacher's Complete Guide", false)
+            ->assertDontSee("Student's Complete Guide", false);
     }
 }

@@ -62,29 +62,24 @@
                             {{ $notice->expires_at?->format('M j, Y') ?? '—' }}
                         </flux:table.cell>
                         <flux:table.cell class="hidden sm:table-cell text-zinc-500">{{ $notice->created_at->format('M j, Y') }}</flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('teacher.notices.edit', $notice) }}" wire:navigate :aria-label="__('Edit notice')" />
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name', ['name' => $notice->title])">
+                                <flux:menu.item icon="eye" href="{{ route('teacher.notices.show', $notice) }}" wire:navigate>{{ __('View') }}</flux:menu.item>
+                                <flux:menu.item icon="pencil-square" href="{{ route('teacher.notices.edit', $notice) }}" wire:navigate>{{ __('Edit') }}</flux:menu.item>
 
                                 @if ($notice->is_published)
-                                    <form method="POST" action="{{ route('teacher.notices.unpublish', $notice) }}">
-                                        @csrf
-                                        <flux:button type="submit" variant="subtle" size="xs" icon="eye-slash" :aria-label="__('Unpublish notice')" />
-                                    </form>
+                                    <x-row-actions.form :action="route('teacher.notices.unpublish', $notice)" icon="eye-slash">{{ __('Unpublish (hide from readers)') }}</x-row-actions.form>
                                 @elseif ($notice->status === 'approved')
-                                    <form method="POST" action="{{ route('teacher.notices.publish', $notice) }}">
-                                        @csrf
-                                        <flux:button type="submit" variant="subtle" size="xs" icon="eye" :aria-label="__('Publish notice')" />
-                                    </form>
+                                    <x-row-actions.form :action="route('teacher.notices.publish', $notice)" icon="megaphone">{{ __('Publish') }}</x-row-actions.form>
                                 @endif
 
-                                <x-confirm-delete
+                                <flux:menu.separator />
+                                <x-row-actions.delete
                                     :action="route('teacher.notices.destroy', $notice)"
-                                    :title="__('Delete Notice')"
-                                    :message="__('Are you sure you want to delete this notice? This action cannot be undone.')"
-                                    :ariaLabel="__('Delete notice')"
+                                    :title="__('Delete this notice?')"
+                                    :message="__('Readers will no longer see it. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
                                 />
-                            </div>
+                            </x-row-actions>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty

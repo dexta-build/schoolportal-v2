@@ -64,6 +64,10 @@ class ImportStudentsCsvJob implements ShouldQueue
             return;
         }
 
+        // The queue worker runs many jobs in one process — remember the tenant binding so it
+        // can be restored, otherwise every later job would be scoped to this school
+        $previousSchool = app()->bound('current.school') ? app('current.school') : null;
+
         try {
             // Establish the tenant context expected by CsvImportService and the
             // BelongsToTenant model trait (both use app('current.school')).
@@ -108,6 +112,12 @@ class ImportStudentsCsvJob implements ShouldQueue
         } finally {
             // Always clean up the temporary file, success or failure.
             @unlink($fullPath);
+
+            if ($previousSchool) {
+                app()->instance('current.school', $previousSchool);
+            } else {
+                app()->forgetInstance('current.school');
+            }
         }
     }
 

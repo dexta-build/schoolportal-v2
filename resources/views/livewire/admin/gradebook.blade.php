@@ -17,14 +17,18 @@
         'weight' => $c['weight'],
     ], $this->components));
 
-    $inputCols  = count($this->subjects) * count($this->components);
+    // One subject at a time when a subject is picked (always on phones)
+    $visibleSubjects = $this->subjectId
+        ? array_values(array_filter($this->subjects, fn ($s) => $s['id'] === $this->subjectId))
+        : $this->subjects;
     $hasGrid    = ! empty($this->grid);
     $hasSubjects = ! empty($this->subjects);
     $hasComps   = ! empty($this->components);
 @endphp
 
 <div
-    x-data="gradebook({{ Js::from($initialScores) }}, {{ Js::from($compsMeta) }}, {{ $inputCols }})"
+    x-data="gradebook({{ Js::from($initialScores) }}, {{ Js::from($compsMeta) }})"
+    x-init="window.matchMedia('(max-width: 767px)').matches && $wire.useOneSubjectMode()"
     x-on:scoresSaved.window="onSaved()"
     class="flex flex-col gap-0"
 >
@@ -40,6 +44,8 @@
                 </p>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
+                <x-page-help topic="gradebook" />
+
                 {{-- Export CSV --}}
                 @if ($this->classId && $this->termId)
                     <a href="{{ $this->role === 'teacher'
@@ -49,14 +55,23 @@
                     </a>
                 @endif
 
-                {{-- Lock Scores (admin only) --}}
+                {{-- Lock / Unlock (admin only) --}}
                 @if ($this->role === 'admin' && $this->classId && $this->termId)
-                    <form method="POST" action="{{ route('admin.scores.lock') }}" x-on:submit="return confirm('Lock all scores for this class? This cannot be undone.')">
-                        @csrf
-                        <input type="hidden" name="class_id" value="{{ $this->classId }}">
-                        <input type="hidden" name="term_id" value="{{ $this->termId }}">
-                        <flux:button variant="subtle" size="sm" icon="lock-closed" type="submit">{{ __('Lock All') }}</flux:button>
-                    </form>
+                    @if ($this->unlockedFilledCells > 0)
+                        <flux:button variant="subtle" size="sm" icon="lock-closed" type="button"
+                            x-on:click="appConfirm({
+                                title: {{ Js::from(__('Lock all scores?')) }},
+                                message: {{ Js::from(__('Scores for this class and term become final. After locking, a score can only be changed through a recorded correction.')) }},
+                                confirmLabel: {{ Js::from(__('Lock scores')) }},
+                            }).then(ok => ok && $wire.lockAll())">
+                            {{ __('Lock All') }}
+                        </flux:button>
+                    @endif
+                    @if ($this->lockedCells > 0)
+                        <flux:button variant="subtle" size="sm" icon="lock-open" type="button" wire:click="$set('showUnlock', true)">
+                            {{ __('Unlock') }}
+                        </flux:button>
+                    @endif
                 @endif
 
                 {{-- Reports --}}
@@ -111,6 +126,25 @@
                 </flux:select>
             </div>
 
+            {{-- Subject filter: one subject at a time (chosen automatically on phones) --}}
+            @if ($hasSubjects)
+                <div class="w-full sm:w-auto sm:min-w-[180px]">
+                    <flux:label for="gradebook-subject" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500">{{ __('Subject') }}</flux:label>
+                    <flux:select id="gradebook-subject" class="w-full"
+                        x-effect="$el.value = $wire.subjectId ?? ''"
+                        x-on:change="switchSubject($event.target, {
+                            title: {{ Js::from(__('Save your scores first?')) }},
+                            message: {{ Js::from(__('You have score changes that are not saved yet. They will be saved before switching subject.')) }},
+                            confirmLabel: {{ Js::from(__('Save and switch')) }},
+                        })">
+                        <option value="">{{ __('All subjects') }}</option>
+                        @foreach ($this->subjects as $subj)
+                            <option value="{{ $subj['id'] }}">{{ $subj['name'] }}</option>
+                        @endforeach
+                    </flux:select>
+                </div>
+            @endif
+
             {{-- Stats chips (only when grid loaded) --}}
             @if ($hasGrid)
                 <div class="flex flex-wrap items-center gap-3 pb-0.5">
@@ -152,6 +186,72 @@
             </div>
         @endif
 
+        {{-- Who locked these scores --}}
+        @if ($this->lockInfo)
+            <div class="px-5 py-2.5 border-t border-zinc-100 dark:border-zinc-700/60 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                <flux:icon name="lock-closed" class="size-3.5 shrink-0" />
+                <span>
+                    {{ trans_choice(':count score is locked|:count scores are locked', $this->lockInfo['count'], ['count' => $this->lockInfo['count']]) }}@if ($this->lockInfo['by']) — {{ __('locked by :name on :date', ['name' => $this->lockInfo['by'], 'date' => $this->lockInfo['at']]) }}@endif.
+                    {{ $this->role === 'admin'
+                        ? __('Click a locked score to correct it.')
+                        : __('Click a locked score to request a correction from the school admin.') }}
+                </span>
+            </div>
+        @endif
+
+        {{-- Report cards made out of date by score changes --}}
+        @if ($this->staleReportCount > 0)
+            <div class="px-5 py-3 border-t border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 flex flex-wrap items-center justify-between gap-3" role="status">
+                <div class="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
+                    <flux:icon name="exclamation-triangle" class="size-4 mt-0.5 shrink-0" />
+                    <span>{{ trans_choice(':count report card is out of date because scores changed after it was generated.|:count report cards are out of date because scores changed after they were generated.', $this->staleReportCount, ['count' => $this->staleReportCount]) }}</span>
+                </div>
+                <flux:button size="sm" variant="primary" icon="arrow-path" type="button"
+                    x-on:click="appConfirm({
+                        title: {{ Js::from(__('Update report cards?')) }},
+                        message: {{ Js::from(__('Positions are recalculated for the whole class. Published report cards stay published, the previous version is kept, and students and parents are told when theirs changed.')) }},
+                        confirmLabel: {{ Js::from(__('Update report cards')) }},
+                    }).then(ok => ok && $wire.regenerateReports())">
+                    {{ __('Update report cards') }}
+                </flux:button>
+            </div>
+        @endif
+
+        {{-- Corrections waiting for an admin decision --}}
+        @if (! empty($this->pendingAmendments))
+            <div class="border-t border-orange-200 dark:border-orange-800">
+                <div class="px-5 py-2.5 bg-orange-50 dark:bg-orange-900/20 flex items-center gap-2 text-sm font-semibold text-orange-800 dark:text-orange-300">
+                    <flux:icon name="clipboard-document-check" class="size-4" />
+                    {{ trans_choice(':count score correction waiting for approval|:count score corrections waiting for approval', count($this->pendingAmendments), ['count' => count($this->pendingAmendments)]) }}
+                </div>
+                <ul class="divide-y divide-zinc-100 dark:divide-zinc-700/60">
+                    @foreach ($this->pendingAmendments as $pending)
+                        <li class="px-5 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" wire:key="pending-{{ $pending['id'] }}">
+                            <div class="min-w-0 text-sm">
+                                <p class="font-medium text-zinc-900 dark:text-white">
+                                    {{ $pending['student'] }} · {{ $pending['subject'] }} ({{ $pending['component'] }})
+                                </p>
+                                <p class="mt-0.5">
+                                    <span class="font-mono text-zinc-500 line-through">{{ $pending['old'] ?? '—' }}</span>
+                                    <span class="text-zinc-400" aria-hidden="true">→</span>
+                                    <span class="sr-only">{{ __('changed to') }}</span>
+                                    <span class="font-mono font-semibold text-zinc-900 dark:text-white">{{ $pending['new'] }}</span>
+                                    <span class="text-xs text-zinc-500">/ {{ $pending['max'] }}</span>
+                                </p>
+                                <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                    {{ $pending['source'] }}@if ($pending['requested_by']) · {{ $pending['requested_by'] }}@endif · {{ $pending['when'] }} — “{{ $pending['reason'] }}”
+                                </p>
+                            </div>
+                            <div class="flex shrink-0 items-center gap-2">
+                                <flux:button size="sm" variant="primary" icon="check" type="button" wire:click="approveAmendment({{ $pending['id'] }})">{{ __('Approve') }}</flux:button>
+                                <flux:button size="sm" variant="subtle" icon="x-mark" type="button" wire:click="startReject({{ $pending['id'] }})">{{ __('Reject') }}</flux:button>
+                            </div>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+
         {{-- No components warning --}}
         @if ($this->classId && $this->termId && ! $hasComps && $hasSubjects)
             <div class="px-5 py-4 border-t border-zinc-100 dark:border-zinc-700">
@@ -162,7 +262,7 @@
                     </div>
                     @if ($this->role === 'admin')
                         <a href="{{ route('admin.grading.index', ['tab' => 'components']) }}">
-                            <flux:button size="sm" variant="primary" icon-trailing="arrow-right">{{ __('Grading Setup') }}</flux:button>
+                            <flux:button size="sm" variant="primary" icon-trailing="arrow-right">{{ __('Grading & Score Setup') }}</flux:button>
                         </a>
                     @endif
                 </div>
@@ -212,6 +312,8 @@
             <span class="flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-300 dark:ring-amber-700"></span>{{ __('Unsaved change') }}</span>
             <span class="flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm bg-blue-100 dark:bg-blue-900/40 ring-1 ring-blue-300 dark:ring-blue-700"></span>{{ __('CBT (auto-graded)') }}</span>
             <span class="flex items-center gap-1.5"><span class="inline-block size-2.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 ring-1 ring-zinc-300 dark:ring-zinc-600"></span>{{ __('Locked') }}</span>
+            <span class="flex items-center gap-1.5"><span class="inline-block size-2 rounded-full bg-indigo-500"></span>{{ __('Corrected') }}</span>
+            <span class="flex items-center gap-1.5"><span class="inline-block size-2 rounded-full bg-orange-500"></span>{{ __('Correction pending') }}</span>
             <span class="flex items-center gap-1.5 ml-auto text-zinc-400">
                 <flux:icon name="information-circle" class="size-3.5" />
                 {{ __('Tab/Arrow keys to navigate · Enter to move down') }}
@@ -244,7 +346,7 @@
                         <tr class="bg-gradient-to-b from-zinc-50 to-zinc-100/80 dark:from-zinc-800 dark:to-zinc-800">
                             {{-- Sticky student column header --}}
                             <th rowspan="2"
-                                class="sticky left-0 z-20 bg-zinc-50 dark:bg-zinc-800 border-b-2 border-r border-zinc-200 dark:border-zinc-700 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 min-w-[200px] align-bottom">
+                                class="sticky left-0 z-20 bg-zinc-50 dark:bg-zinc-800 border-b-2 border-r border-zinc-200 dark:border-zinc-700 px-3 sm:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 min-w-[140px] sm:min-w-[200px] align-bottom">
                                 <div class="flex items-center gap-1.5">
                                     <flux:icon name="user" class="size-3.5" />
                                     {{ __('Student') }}
@@ -253,7 +355,7 @@
                             </th>
 
                             {{-- Subject name headers (spanning components + 1 total) --}}
-                            @foreach ($this->subjects as $subj)
+                            @foreach ($visibleSubjects as $subj)
                                 <th colspan="{{ count($this->components) + 1 }}"
                                     class="border-b border-l border-zinc-200 dark:border-zinc-700 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100 whitespace-nowrap bg-zinc-50 dark:bg-zinc-800">
                                     {{ $subj['name'] }}
@@ -263,7 +365,7 @@
 
                         {{-- Row 2: Component names + Total --}}
                         <tr>
-                            @foreach ($this->subjects as $subj)
+                            @foreach ($visibleSubjects as $subj)
                                 @foreach ($this->components as $comp)
                                     <th class="bg-zinc-100 dark:bg-zinc-800 border-b-2 border-l border-zinc-200 dark:border-zinc-700 px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wide min-w-[72px]"
                                         title="{{ $subj['name'] }} — {{ $comp['name'] }}">
@@ -287,14 +389,14 @@
                             <tr class="group {{ $i % 2 === 1 ? 'bg-zinc-50/50 dark:bg-zinc-800/20' : '' }} hover:bg-sky-50/40 dark:hover:bg-sky-900/10 transition-colors duration-75">
 
                                 {{-- Sticky student cell --}}
-                                <td class="sticky left-0 z-10 border-r border-zinc-200 dark:border-zinc-700 px-4 py-2 {{ $i % 2 === 1 ? 'bg-zinc-50/80 dark:bg-zinc-800/40' : 'bg-white dark:bg-zinc-900' }} group-hover:bg-sky-50/60 dark:group-hover:bg-sky-900/20 transition-colors duration-75">
+                                <td class="sticky left-0 z-10 border-r border-zinc-200 dark:border-zinc-700 px-3 sm:px-4 py-2 {{ $i % 2 === 1 ? 'bg-zinc-50/80 dark:bg-zinc-800/40' : 'bg-white dark:bg-zinc-900' }} group-hover:bg-sky-50/60 dark:group-hover:bg-sky-900/20 transition-colors duration-75">
                                     <div class="flex items-center gap-2.5 min-w-0">
                                         {{-- Avatar circle --}}
                                         <div class="size-7 shrink-0 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold">
                                             {{ mb_strtoupper(mb_substr($row['student_name'], 0, 1)) }}
                                         </div>
                                         <div class="min-w-0">
-                                            <div class="truncate max-w-[155px] font-medium text-zinc-800 dark:text-zinc-100 text-xs leading-snug">{{ $row['student_name'] }}</div>
+                                            <div class="truncate max-w-[100px] sm:max-w-[155px] font-medium text-zinc-800 dark:text-zinc-100 text-xs leading-snug">{{ $row['student_name'] }}</div>
                                             @if ($row['admission_number'])
                                                 <div class="text-[10px] text-zinc-400 font-mono">{{ $row['admission_number'] }}</div>
                                             @endif
@@ -303,7 +405,7 @@
                                 </td>
 
                                 {{-- Score cells per subject per component --}}
-                                @foreach ($this->subjects as $subj)
+                                @foreach ($visibleSubjects as $subj)
                                     @php $subid = $subj['id']; @endphp
                                     @foreach ($this->components as $comp)
                                         @php
@@ -316,11 +418,32 @@
                                         @endphp
                                         <td class="border-l border-zinc-100 dark:border-zinc-700/60 p-1 text-center">
                                             @if ($isLocked)
-                                                {{-- Locked: read-only display --}}
-                                                <div class="flex items-center justify-center gap-1 rounded bg-zinc-100 dark:bg-zinc-800 px-2 py-1.5 text-xs text-zinc-500">
-                                                    <span>{{ $score !== '' ? $score : '—' }}</span>
-                                                    <flux:icon name="lock-closed" class="size-3 text-zinc-300" />
-                                                </div>
+                                                {{-- Locked: final. Click to correct (admin) or request a correction (teacher). --}}
+                                                @php
+                                                    $cellTitle = $cell['last_amendment']
+                                                        ?? ($this->role === 'admin' ? __('Locked — click to correct') : __('Locked — click to request a correction'));
+                                                    if ($cell['has_pending'] ?? false) {
+                                                        $cellTitle = __('Correction pending approval').' · '.$cellTitle;
+                                                    }
+                                                @endphp
+                                                <button type="button"
+                                                    x-on:click="(changeCount === 0 ? Promise.resolve(true) : appConfirm({
+                                                        title: {{ Js::from(__('Discard unsaved scores?')) }},
+                                                        message: {{ Js::from(__('You have score changes that are not saved yet. Save them first, or continue and lose them.')) }},
+                                                        confirmLabel: {{ Js::from(__('Discard and continue')) }},
+                                                        variant: 'danger',
+                                                    })).then(ok => ok && $wire.openCorrection({{ $cell['score_id'] }}))"
+                                                    title="{{ $cellTitle }}"
+                                                    aria-label="{{ $row['student_name'] }}, {{ $subj['name'] }} {{ $comp['short_name'] }}: {{ $score !== '' ? $score + 0 : '—' }}. {{ $cellTitle }}"
+                                                    class="relative mx-auto flex min-h-8 w-[62px] items-center justify-center gap-1 rounded bg-zinc-100 dark:bg-zinc-800 px-2 py-1.5 text-xs text-zinc-600 dark:text-zinc-300 ring-1 ring-transparent hover:ring-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                                                    <span>{{ $score !== '' ? $score + 0 : '—' }}</span>
+                                                    <flux:icon name="lock-closed" class="size-3 text-zinc-400" />
+                                                    @if ($cell['has_pending'] ?? false)
+                                                        <span class="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-zinc-900" aria-hidden="true"></span>
+                                                    @elseif (($cell['amended_count'] ?? 0) > 0)
+                                                        <span class="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-white dark:ring-zinc-900" aria-hidden="true"></span>
+                                                    @endif
+                                                </button>
                                             @else
                                                 {{-- Editable input --}}
                                                 <input
@@ -425,6 +548,93 @@
             {{ __('Updating…') }}
         </div>
     </div>
+
+    {{-- ── Correct a locked score (admin) / request a correction (teacher) ── --}}
+    @if ($this->correctionScoreId && $this->correctionCell)
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center"
+             role="dialog" aria-modal="true" aria-labelledby="correction-title"
+             x-on:keydown.escape.window="$wire.cancelCorrection()">
+            <form wire:submit="submitCorrection" class="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+                <h2 id="correction-title" class="text-base font-semibold text-zinc-900 dark:text-white">
+                    {{ $this->role === 'admin' ? __('Correct locked score') : __('Request a score correction') }}
+                </h2>
+                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                    {{ $this->correctionCell['student'] }} · {{ $this->correctionCell['subject'] }} · {{ $this->correctionCell['component'] }}
+                </p>
+
+                <div class="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                        <p class="text-xs font-medium text-zinc-500">{{ __('Current score') }}</p>
+                        <p class="mt-1 font-mono text-lg text-zinc-900 dark:text-white">{{ $this->correctionCell['current'] }} <span class="text-sm text-zinc-400">/ {{ $this->correctionCell['max'] + 0 }}</span></p>
+                    </div>
+                    <flux:input type="number" step="0.5" min="0" max="{{ $this->correctionCell['max'] }}"
+                        wire:model="correctionNewScore" label="{{ __('Correct score') }}" required autofocus />
+                </div>
+
+                <div class="mt-3">
+                    <flux:textarea wire:model="correctionReason" rows="3" required
+                        label="{{ __('Reason for the correction') }}"
+                        placeholder="{{ __('For example: typing error — the marked script shows 21, not 12') }}" />
+                </div>
+
+                <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                    {{ $this->role === 'admin'
+                        ? __('The score stays locked. The old score, new score, your reason and your name are recorded, and this class\'s report cards are marked out of date.')
+                        : __('The school admin will review your request. The score only changes if they approve it.') }}
+                </p>
+
+                <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <flux:button type="button" variant="ghost" wire:click="cancelCorrection">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="primary">
+                        {{ $this->role === 'admin' ? __('Save correction') : __('Send request') }}
+                    </flux:button>
+                </div>
+            </form>
+        </div>
+    @endif
+
+    {{-- ── Unlock scores (admin) ───────────────────────────────────────── --}}
+    @if ($this->showUnlock)
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center"
+             role="dialog" aria-modal="true" aria-labelledby="unlock-title"
+             x-on:keydown.escape.window="$wire.set('showUnlock', false)">
+            <form wire:submit="unlockAll" class="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+                <h2 id="unlock-title" class="text-base font-semibold text-zinc-900 dark:text-white">{{ __('Unlock scores for this class?') }}</h2>
+                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                    {{ __('Use this for large mistakes, such as a whole column entered wrongly. For a single wrong score, click the score and correct it instead — it stays locked.') }}
+                </p>
+                <div class="mt-4">
+                    <flux:textarea wire:model="unlockReason" rows="3" required autofocus
+                        label="{{ __('Reason for unlocking') }}"
+                        placeholder="{{ __('For example: CA 2 scores were entered in the CA 1 column') }}" />
+                </div>
+                <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">{{ __('Your reason and your name are recorded. Teachers can edit the scores until you lock them again.') }}</p>
+                <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <flux:button type="button" variant="ghost" wire:click="$set('showUnlock', false)">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="danger" icon="lock-open">{{ __('Unlock scores') }}</flux:button>
+                </div>
+            </form>
+        </div>
+    @endif
+
+    {{-- ── Reject a pending correction (admin) ─────────────────────────── --}}
+    @if ($this->rejectingAmendmentId)
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center"
+             role="dialog" aria-modal="true" aria-labelledby="reject-title"
+             x-on:keydown.escape.window="$wire.cancelReject()">
+            <form wire:submit="confirmReject" class="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+                <h2 id="reject-title" class="text-base font-semibold text-zinc-900 dark:text-white">{{ __('Reject this correction?') }}</h2>
+                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{{ __('The score will not change. The teacher who asked is told your reason.') }}</p>
+                <div class="mt-4">
+                    <flux:textarea wire:model="rejectReason" rows="3" required autofocus label="{{ __('Reason') }}" />
+                </div>
+                <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <flux:button type="button" variant="ghost" wire:click="cancelReject">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="danger">{{ __('Reject correction') }}</flux:button>
+                </div>
+            </form>
+        </div>
+    @endif
 
     {{-- ── Floating Save Bar ────────────────────────────────────────────── --}}
     <div

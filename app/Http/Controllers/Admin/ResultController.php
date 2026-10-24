@@ -12,6 +12,7 @@ use App\Models\StudentProfile;
 use App\Models\Term;
 use App\Services\FileUploadService;
 use App\Services\NotificationService;
+use App\Services\RecentlyDeletedService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -105,6 +106,8 @@ class ResultController extends Controller
             return redirect()->back()->withInput()
                 ->with('error', __('File upload failed. Please try again.'));
         }
+
+        Result::releaseDeletedSlot((int) $validated['student_id'], (int) $validated['session_id'], (int) $validated['term_id']);
 
         try {
             $result = DB::transaction(function () use ($validated, $upload) {
@@ -259,22 +262,14 @@ class ResultController extends Controller
         return view('admin.results.show', compact('result'));
     }
 
+    /**
+     * Kept for Result::RESTORE_DAYS so the delete can be undone; the PDF stays on Cloudinary until then.
+     */
     public function destroy(Result $result): RedirectResponse
     {
-        if ($result->file_public_id) {
-            try {
-                app(FileUploadService::class)->deleteRaw($result->file_public_id);
-            } catch (\Throwable $e) {
-                Log::warning('Could not delete result file from Cloudinary', [
-                    'public_id' => $result->file_public_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
         $result->delete();
 
         return redirect()->route('admin.results.index')
-            ->with('success', __('Result deleted.'));
+            ->with('undo', app(RecentlyDeletedService::class)->deleted($result, 'admin'));
     }
 }

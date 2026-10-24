@@ -11,6 +11,7 @@ use App\Models\Notice;
 use App\Models\Quiz;
 use App\Models\Result;
 use App\Models\School;
+use App\Models\ScoreAmendment;
 use App\Models\StudentTermReport;
 use App\Models\User;
 use App\Notifications\AcademicPeriodChangedNotification;
@@ -24,6 +25,7 @@ use App\Notifications\NewQuizNotification;
 use App\Notifications\NewResultNotification;
 use App\Notifications\NewSchoolNotification;
 use App\Notifications\ReportCardPublishedNotification;
+use App\Notifications\ReportCardRevisedNotification;
 use App\Notifications\SubmissionApprovedNotification;
 use App\Notifications\SubmissionRejectedNotification;
 use Illuminate\Support\Facades\Notification;
@@ -42,17 +44,19 @@ class NotificationService
             return;
         }
 
-        // Notify the student
-        $student->notify(new NewResultNotification(
-            studentName: $student->name,
-            sessionName: $result->session?->name ?? '',
-            termName: $result->term?->name ?? '',
-            resultId: $result->id,
-            recipientRole: 'student',
-        ));
+        // Notify the student (a deactivated student can't log in to see it)
+        if ($student->is_active) {
+            $student->notify(new NewResultNotification(
+                studentName: $student->name,
+                sessionName: $result->session?->name ?? '',
+                termName: $result->term?->name ?? '',
+                resultId: $result->id,
+                recipientRole: 'student',
+            ));
+        }
 
-        // Notify the student's parents
-        $parents = $student->parents()->get();
+        // Notify the student's parents (parentUsers — parents() is the link table, not users)
+        $parents = $student->parentUsers()->where('users.is_active', true)->get();
         foreach ($parents as $parent) {
             $parent->notify(new NewResultNotification(
                 studentName: $student->name,
@@ -75,7 +79,7 @@ class NotificationService
         $weekNumber = $assignment->week_number;
 
         // Get students in this class
-        $students = User::where('role', 'student')
+        $students = User::where('role', 'student')->where('is_active', true)
             ->whereHas('studentProfile', fn ($q) => $q->where('class_id', $assignment->class_id))
             ->get();
 
@@ -85,7 +89,7 @@ class NotificationService
 
         // Notify parents of students in this class
         $studentIds = $students->pluck('id');
-        $parents = User::where('role', 'parent')
+        $parents = User::where('role', 'parent')->where('is_active', true)
             ->whereHas('children', fn ($q) => $q->whereIn('student_id', $studentIds))
             ->get();
 
@@ -160,7 +164,7 @@ class NotificationService
         $className = $quiz->class?->name ?? '';
 
         // Notify students in the class
-        $students = User::where('role', 'student')
+        $students = User::where('role', 'student')->where('is_active', true)
             ->whereHas('studentProfile', fn ($q) => $q->where('class_id', $quiz->class_id))
             ->get();
 
@@ -170,7 +174,7 @@ class NotificationService
 
         // Notify parents
         $studentIds = $students->pluck('id');
-        $parents = User::where('role', 'parent')
+        $parents = User::where('role', 'parent')->where('is_active', true)
             ->whereHas('children', fn ($q) => $q->whereIn('student_id', $studentIds))
             ->get();
 
@@ -188,7 +192,7 @@ class NotificationService
         $className = $game->class?->name ?? '';
 
         // Notify students in the class
-        $students = User::where('role', 'student')
+        $students = User::where('role', 'student')->where('is_active', true)
             ->whereHas('studentProfile', fn ($q) => $q->where('class_id', $game->class_id))
             ->get();
 
@@ -198,7 +202,7 @@ class NotificationService
 
         // Notify parents
         $studentIds = $students->pluck('id');
-        $parents = User::where('role', 'parent')
+        $parents = User::where('role', 'parent')->where('is_active', true)
             ->whereHas('children', fn ($q) => $q->whereIn('student_id', $studentIds))
             ->get();
 
@@ -220,7 +224,7 @@ class NotificationService
         $className = $exam->class?->name ?? '';
 
         // Notify students in the class
-        $students = User::where('role', 'student')
+        $students = User::where('role', 'student')->where('is_active', true)
             ->whereHas('studentProfile', fn ($q) => $q->where('class_id', $exam->class_id))
             ->get();
 
@@ -228,9 +232,13 @@ class NotificationService
             $student->notify(new NewExamNotification($exam->title, $className, $exam->category, $exam->id, 'student'));
         }
 
-        // Notify parents
+        // Notify parents — only when the school shows parents CBT results
+        if (! School::withoutGlobalScopes()->find($exam->school_id)?->featureEnabled('enable_cbt_results_for_parents')) {
+            return;
+        }
+
         $studentIds = $students->pluck('id');
-        $parents = User::where('role', 'parent')
+        $parents = User::where('role', 'parent')->where('is_active', true)
             ->whereHas('children', fn ($q) => $q->whereIn('student_id', $studentIds))
             ->get();
 
@@ -254,14 +262,16 @@ class NotificationService
         $sessionName = $report->session?->name ?? '';
         $termName = $report->term?->name ?? '';
 
-        // Notify the student
-        $student->notify(new ReportCardPublishedNotification(
-            studentName: $student->name,
-            sessionName: $sessionName,
-            termName: $termName,
-            reportId: $report->id,
-            recipientRole: 'student',
-        ));
+        // Notify the student (a deactivated student can't log in to see it)
+        if ($student->is_active) {
+            $student->notify(new ReportCardPublishedNotification(
+                studentName: $student->name,
+                sessionName: $sessionName,
+                termName: $termName,
+                reportId: $report->id,
+                recipientRole: 'student',
+            ));
+        }
 
         // Notify parents
         $parents = User::where('role', 'parent')
@@ -277,6 +287,45 @@ class NotificationService
                 reportId: $report->id,
                 recipientRole: 'parent',
             ));
+        }
+    }
+
+    /**
+     * Notify a student and their parents that a published report card was corrected.
+     */
+    public function notifyReportCardRevised(StudentTermReport $report): void
+    {
+        $report->loadMissing([
+            'student' => fn ($q) => $q->withoutGlobalScopes(),
+            'session' => fn ($q) => $q->withoutGlobalScopes(),
+            'term' => fn ($q) => $q->withoutGlobalScopes(),
+        ]);
+
+        $student = $report->student;
+        if (! $student) {
+            return;
+        }
+
+        $details = [
+            'studentName' => $student->name,
+            'sessionName' => $report->session?->name ?? '',
+            'termName' => $report->term?->name ?? __('Session'),
+            'reportId' => $report->id,
+        ];
+
+        if ($student->is_active) {
+            $student->notify(new ReportCardRevisedNotification(...$details, recipientRole: 'student'));
+        }
+
+        $parents = User::withoutGlobalScopes()
+            ->where('school_id', $student->school_id)
+            ->where('role', 'parent')
+            ->where('is_active', true)
+            ->whereHas('children', fn ($q) => $q->where('student_id', $student->id))
+            ->get();
+
+        foreach ($parents as $parent) {
+            $parent->notify(new ReportCardRevisedNotification(...$details, recipientRole: 'parent'));
         }
     }
 
@@ -366,6 +415,9 @@ class NotificationService
             'game' => Game::find($entityId)?->title ?? __('Game'),
             'exam' => Exam::find($entityId)?->title ?? __('Exam'),
             'report_card' => StudentTermReport::with('student:id,name')->find($entityId)?->student?->name ?? __('Report Card'),
+            'score_amendment' => ($amendment = ScoreAmendment::with(['student:id,name', 'subject:id,name'])->find($entityId))
+                ? "{$amendment->student?->name} — {$amendment->subject?->name}"
+                : __('Score correction'),
             default => ucfirst($entityType),
         };
     }

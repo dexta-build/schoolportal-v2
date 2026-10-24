@@ -52,28 +52,20 @@
                                     <flux:badge color="zinc" size="sm">{{ __('Inactive') }}</flux:badge>
                                 @endif
                             </flux:table.cell>
-                            <flux:table.cell>
-                                <div class="flex items-center gap-1">
-                                    <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.levels.edit', $level) }}" wire:navigate />
+                            <flux:table.cell class="text-end">
+                                <x-row-actions :label="__('Actions for :name', ['name' => $level->name])">
+                                    <flux:menu.item icon="pencil-square" href="{{ route('admin.levels.edit', $level) }}" wire:navigate>{{ __('Edit level') }}</flux:menu.item>
+                                    <flux:menu.separator />
                                     @if ($level->classes_count === 0)
-                                        <x-confirm-delete
+                                        <x-row-actions.delete
                                             :action="route('admin.levels.destroy', $level)"
-                                            :title="__('Delete Level')"
-                                            :message="__('Are you sure you want to delete this level? This action cannot be undone.')"
-                                            :ariaLabel="__('Delete level')"
+                                            :title="__('Delete :name?', ['name' => $level->name])"
+                                            :message="__('This level has no classes. Deleting it cannot be undone.')"
                                         />
                                     @else
-                                        <flux:button
-                                            type="button"
-                                            variant="subtle"
-                                            size="xs"
-                                            icon="trash"
-                                            disabled
-                                            title="{{ __('Remove classes from this level before deleting it.') }}"
-                                            aria-label="{{ __('Cannot delete level while classes are assigned') }}"
-                                        />
+                                        <flux:menu.item icon="trash" disabled>{{ __('Delete (remove its classes first)') }}</flux:menu.item>
                                     @endif
-                                </div>
+                                </x-row-actions>
                             </flux:table.cell>
                         </flux:table.row>
                     @empty

@@ -41,7 +41,7 @@
                 <flux:table.column>{{ __('Term') }}</flux:table.column>
                 <flux:table.column>{{ __('Due Date') }}</flux:table.column>
                 <flux:table.column>{{ __('Status') }}</flux:table.column>
-                <flux:table.column class="w-32" />
+                <flux:table.column class="w-14"><span class="sr-only">{{ __('Actions') }}</span></flux:table.column>
             </flux:table.columns>
             <flux:table.rows>
                 @forelse ($assignments as $assignment)
@@ -60,16 +60,19 @@
                                 <flux:badge color="red" size="sm">{{ __('Rejected') }}</flux:badge>
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.assignments.edit', $assignment) }}" wire:navigate />
-                                <x-confirm-delete
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for week :num assignment', ['num' => $assignment->week_number])">
+                                @if ($assignment->file_url)
+                                    <flux:menu.item icon="paper-clip" href="{{ $assignment->file_url }}" target="_blank" rel="noopener noreferrer">{{ __('Open file') }}</flux:menu.item>
+                                @endif
+                                <flux:menu.item icon="pencil-square" href="{{ route('admin.assignments.edit', $assignment) }}" wire:navigate>{{ __('Edit') }}</flux:menu.item>
+                                <flux:menu.separator />
+                                <x-row-actions.delete
                                     :action="route('admin.assignments.destroy', $assignment)"
-                                    :title="__('Delete Assignment')"
-                                    :message="__('Are you sure you want to delete this assignment? This action cannot be undone.')"
-                                    :ariaLabel="__('Delete assignment')"
+                                    :title="__('Delete this assignment?')"
+                                    :message="__('Students and parents will no longer see it. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
                                 />
-                            </div>
+                            </x-row-actions>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty

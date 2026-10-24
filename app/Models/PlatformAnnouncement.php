@@ -23,6 +23,7 @@ class PlatformAnnouncement extends Model
     protected function casts(): array
     {
         return [
+            'created_by' => 'integer',
             'is_active' => 'boolean',
             'starts_at' => 'datetime',
             'expires_at' => 'datetime',

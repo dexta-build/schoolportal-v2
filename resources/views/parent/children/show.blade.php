@@ -78,7 +78,7 @@
         {{-- Quick Links --}}
         <div class="flex flex-wrap gap-2">
             <flux:button variant="filled" size="sm" icon="document-text" href="{{ route('parent.children.results', $child) }}" wire:navigate>
-                {{ __('View Uploaded Results') }}
+                {{ __('View Result Sheets') }}
             </flux:button>
             <flux:button variant="filled" size="sm" icon="document-chart-bar" href="{{ route('parent.children.report-cards', $child) }}" wire:navigate>
                 {{ __('Report Cards') }}
@@ -92,9 +92,11 @@
             <flux:button variant="filled" size="sm" icon="puzzle-piece" href="{{ route('parent.children.games', $child) }}" wire:navigate>
                 {{ __('View Games') }}
             </flux:button>
+            @if (app('current.school')->featureEnabled('enable_cbt_results_for_parents'))
             <flux:button variant="filled" size="sm" icon="computer-desktop" href="{{ route('parent.children.cbt-results', $child) }}" wire:navigate>
                 {{ __('CBT Results') }}
             </flux:button>
+            @endif
         </div>
     </div>
 </x-layouts::app>

@@ -59,20 +59,16 @@
                                 <flux:badge color="zinc" size="sm">{{ __('Inactive') }}</flux:badge>
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.teachers.edit', $teacher) }}" wire:navigate aria-label="{{ __('Edit :name', ['name' => $teacher->name]) }}" />
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name', ['name' => $teacher->name])">
+                                <flux:menu.item icon="pencil-square" href="{{ route('admin.teachers.edit', $teacher) }}" wire:navigate>{{ __('Edit details & classes') }}</flux:menu.item>
+                                <flux:menu.separator />
                                 @if ($teacher->is_active)
-                                    <flux:modal.trigger :name="'deactivate-teacher-' . $teacher->id">
-                                        <flux:button variant="subtle" size="xs" icon="pause-circle" aria-label="{{ __('Deactivate') }}" />
-                                    </flux:modal.trigger>
+                                    <flux:menu.item icon="pause-circle" variant="danger" x-on:click="$flux.modal('deactivate-teacher-{{ $teacher->id }}').show()">{{ __('Deactivate (block login)') }}</flux:menu.item>
                                 @else
-                                    <form method="POST" action="{{ route('admin.teachers.activate', $teacher) }}" class="inline">
-                                        @csrf
-                                        <flux:button type="submit" variant="subtle" size="xs" icon="play-circle" aria-label="{{ __('Activate') }}" />
-                                    </form>
+                                    <x-row-actions.form :action="route('admin.teachers.activate', $teacher)" icon="play-circle">{{ __('Activate (allow login)') }}</x-row-actions.form>
                                 @endif
-                            </div>
+                            </x-row-actions>
 
                             {{-- Deactivate modal --}}
                             @if ($teacher->is_active)

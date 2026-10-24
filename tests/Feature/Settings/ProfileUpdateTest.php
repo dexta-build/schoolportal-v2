@@ -59,32 +59,26 @@ class ProfileUpdateTest extends TestCase
         $this->assertNotNull($this->admin->refresh()->email_verified_at);
     }
 
-    public function test_user_can_delete_their_account(): void
+    public function test_users_cannot_delete_their_own_account(): void
     {
-        $this->actingAs($this->admin);
+        // Accounts are managed by the school admin; deleting would cascade to a student's records
+        foreach ([$this->admin, $this->createSchoolUser('teacher'), $this->createSchoolUser('student')] as $user) {
+            $this->actingAs($user);
 
-        $response = Livewire::test('pages::settings.delete-user-modal')
-            ->set('password', 'Password1!')
-            ->call('deleteUser');
+            Livewire::test('pages::settings.delete-user-modal')
+                ->set('password', 'Password1!')
+                ->call('deleteUser')
+                ->assertForbidden();
 
-        $response
-            ->assertHasNoErrors()
-            ->assertRedirect('/');
-
-        $this->assertNull($this->admin->fresh());
-        $this->assertFalse(auth()->check());
+            $this->assertNotNull($user->fresh());
+        }
     }
 
-    public function test_correct_password_must_be_provided_to_delete_account(): void
+    public function test_profile_page_does_not_offer_account_deletion(): void
     {
-        $this->actingAs($this->admin);
-
-        $response = Livewire::test('pages::settings.delete-user-modal')
-            ->set('password', 'wrong-password')
-            ->call('deleteUser');
-
-        $response->assertHasErrors(['password']);
-
-        $this->assertNotNull($this->admin->fresh());
+        $this->actingAs($this->admin)
+            ->get(route('profile.edit'))
+            ->assertOk()
+            ->assertDontSee('Delete account');
     }
 }

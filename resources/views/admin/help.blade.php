@@ -20,7 +20,7 @@
                 <li><a href="#quizzes-games" class="underline hover:text-[var(--color-primary)]">{{ __('AI Quizzes & Games') }}</a></li>
                 <li><a href="#cbt" class="underline hover:text-[var(--color-primary)]">{{ __('CBT (Computer-Based Testing)') }}</a></li>
                 <li><a href="#approvals" class="underline hover:text-[var(--color-primary)]">{{ __('Teacher Approvals') }}</a></li>
-                <li><a href="#notices" class="underline hover:text-[var(--color-primary)]">{{ __('Notices') }}</a></li>
+                <li><a href="#notices" class="underline hover:text-[var(--color-primary)]">{{ __('Notice Board') }}</a></li>
                 <li><a href="#promotions" class="underline hover:text-[var(--color-primary)]">{{ __('Promoting Students') }}</a></li>
                 <li><a href="#settings" class="underline hover:text-[var(--color-primary)]">{{ __('School Settings & Branding') }}</a></li>
                 <li><a href="#ai-credits" class="underline hover:text-[var(--color-primary)]">{{ __('AI Credits') }}</a></li>
@@ -82,7 +82,7 @@
         <section id="results-assignments" class="bg-white dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 p-6">
             <h2 class="text-lg font-semibold text-zinc-900 dark:text-white mb-3">{{ __('5. Results & Assignments') }}</h2>
             <div class="prose prose-sm dark:prose-invert max-w-none">
-                <p><strong>{{ __('Results:') }}</strong> {{ __('Upload result PDFs for each student per term. Go to Scores & Reports → Uploaded Results → "Upload Result". Select the student, session, term, and upload the PDF file.') }}</p>
+                <p><strong>{{ __('Results:') }}</strong> {{ __('Upload result PDFs for each student per term. Go to Scores & Reports → Result Sheets (PDF) → "Upload Result". Select the student, session, term, and upload the PDF file.') }}</p>
                 <p><strong>{{ __('Bulk results:') }}</strong> {{ __('Click "Bulk Upload" to upload multiple result PDFs at once. Name each file as the student\'s username (e.g., "john_doe.pdf") and the system auto-matches them.') }}</p>
                 <p><strong>{{ __('Assignments:') }}</strong> {{ __('Upload assignments per class, per week, per term under Academics → Assignments. Students in that class can view and download them.') }}</p>
                 <p>{{ __('Results you upload are approved immediately. Results uploaded by teachers require your approval first.') }}</p>

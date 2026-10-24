@@ -50,7 +50,7 @@ class SendParentWeeklyDigest extends Command
             }
 
             // Pre-fetch school-wide notices count for the week
-            $noticesCount = Notice::withoutGlobalScopes()
+            $noticesCount = Notice::withoutGlobalScope('tenant')
                 ->where('school_id', $school->id)
                 ->where('is_published', true)
                 ->where('published_at', '>=', $weekStart)
@@ -150,7 +150,7 @@ class SendParentWeeklyDigest extends Command
             }
 
             // New assignments this week for the student's class
-            $assignmentsCount = Assignment::withoutGlobalScopes()
+            $assignmentsCount = Assignment::withoutGlobalScope('tenant')
                 ->where('school_id', $school->id)
                 ->where('class_id', $classId)
                 ->where('status', 'approved')
@@ -159,7 +159,7 @@ class SendParentWeeklyDigest extends Command
                 ->count();
 
             // New results this week
-            $resultsCount = Result::withoutGlobalScopes()
+            $resultsCount = Result::withoutGlobalScope('tenant')
                 ->where('student_id', $student->id)
                 ->where('school_id', $school->id)
                 ->where('status', 'approved')

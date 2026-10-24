@@ -3,7 +3,7 @@
         {{-- Breadcrumb --}}
         <div class="flex items-center gap-2">
             <flux:link href="{{ route('student.notices.index') }}" wire:navigate class="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
-                {{ __('Notices') }}
+                {{ __('Notice Board') }}
             </flux:link>
             <flux:icon.chevron-right class="w-3 h-3 text-zinc-400" />
             <flux:text class="text-sm line-clamp-1">{{ $notice->title }}</flux:text>

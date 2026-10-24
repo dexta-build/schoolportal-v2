@@ -1,6 +1,6 @@
-<x-layouts::app :title="__('Student Promotions')">
+<x-layouts::app :title="__('Promote Students (New Session)')">
     <div class="space-y-6">
-        <x-admin-header :title="__('Student Promotions')" />
+        <x-admin-header :title="__('Promote Students (New Session)')" :description="__('At the start of a new session, move students up to their next class or level.')" />
 
         @if (session('success'))
             <flux:callout variant="success" icon="check-circle">{{ session('success') }}</flux:callout>

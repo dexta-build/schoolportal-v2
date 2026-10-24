@@ -99,8 +99,11 @@
                         </span>
                     @endif
                     <button
-                        wire:click="generate"
-                        wire:confirm="Regenerate AI analysis? This will use 1 credit."
+                        x-on:click="appConfirm({
+                            title: {{ Js::from(__('Regenerate AI analysis?')) }},
+                            message: {{ Js::from(__('This uses 1 AI credit.')) }},
+                            confirmLabel: {{ Js::from(__('Regenerate')) }},
+                        }).then(ok => ok && $wire.generate())"
                         wire:loading.attr="disabled"
                         wire:target="generate"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

@@ -20,6 +20,8 @@ class SchoolAnnouncementDismissal extends Model
     protected function casts(): array
     {
         return [
+            'announcement_id' => 'integer',
+            'user_id' => 'integer',
             'dismissed_at' => 'datetime',
         ];
     }

@@ -65,7 +65,7 @@ class StudentController extends Controller
                 ->orderBy('sort_order')
                 ->get(['id', 'name']);
 
-            $classQuery = SchoolClass::withoutGlobalScopes()
+            $classQuery = SchoolClass::withoutGlobalScope('tenant')
                 ->where('school_id', $request->input('school_id'))
                 ->where('is_active', true)
                 ->orderBy('name');
@@ -93,7 +93,7 @@ class StudentController extends Controller
                 ->orderBy('sort_order')
                 ->get(['id', 'name']);
 
-            $classes = SchoolClass::withoutGlobalScopes()
+            $classes = SchoolClass::withoutGlobalScope('tenant')
                 ->with('level:id,name')
                 ->where('school_id', $request->input('school_id'))
                 ->where('is_active', true)
@@ -165,13 +165,6 @@ class StudentController extends Controller
             ->with('success', __('Student ":name" created.', ['name' => $validated['name']]));
     }
 
-    public function destroy(User $student): RedirectResponse
-    {
-        abort_unless($student->role === 'student', 404);
-
-        $student->delete();
-
-        return redirect()->route('super-admin.students.index')
-            ->with('success', __('Student deleted.'));
-    }
+    // No destroy: a school's students are the school's own records. The platform can't delete
+    // them, so no school can say its records were changed by the platform.
 }

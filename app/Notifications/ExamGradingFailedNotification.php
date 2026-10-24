@@ -30,7 +30,7 @@ class ExamGradingFailedNotification extends DatabaseNotification
 
     protected function actionUrl(): string
     {
-        return url('/portal/admin/exams/attempts/'.$this->attempt->id);
+        return url("/portal/admin/exams/{$this->attempt->exam_id}/results/{$this->attempt->id}/grade");
     }
 
     protected function typeLabel(): string

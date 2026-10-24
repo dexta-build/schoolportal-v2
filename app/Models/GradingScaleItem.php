@@ -27,6 +27,7 @@ class GradingScaleItem extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
             'grading_scale_id' => 'integer',
             'min_score' => 'integer',
             'max_score' => 'integer',

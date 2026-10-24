@@ -1,6 +1,6 @@
-<x-layouts::app :title="__('My Uploaded Results')">
+<x-layouts::app :title="__('My Result Sheets (PDF)')">
     <div class="space-y-6">
-        <x-admin-header :title="__('My Uploaded Results')" :description="__('View your academic results by session and term.')" />
+        <x-admin-header :title="__('My Result Sheets (PDF)')" :description="__('View your academic results by session and term.')" />
 
         {{-- Filters --}}
         <form method="GET" action="{{ route('student.results.index') }}" class="flex flex-wrap items-end gap-3">

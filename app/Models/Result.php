@@ -7,13 +7,14 @@ namespace App\Models;
 use App\Services\FileUploadService;
 use App\Traits\Auditable;
 use App\Traits\BelongsToTenant;
+use App\Traits\UndoableDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Result extends Model
 {
-    use Auditable, BelongsToTenant, HasFactory;
+    use Auditable, BelongsToTenant, HasFactory, UndoableDeletes;
 
     protected $fillable = [
         'school_id',
@@ -88,5 +89,29 @@ class Result extends Model
         } catch (\Throwable) {
             return $value;
         }
+    }
+
+    /**
+     * One result sheet per student per term (unique index). A deleted sheet still holds that place,
+     * so a new upload removes it for good first.
+     */
+    public static function releaseDeletedSlot(int $studentId, int $sessionId, int $termId): void
+    {
+        static::onlyTrashed()
+            ->where('student_id', $studentId)
+            ->where('session_id', $sessionId)
+            ->where('term_id', $termId)
+            ->get()
+            ->each->forceDelete();
+    }
+
+    public function undoableTitle(): string
+    {
+        return __('Result sheet: :name', ['name' => $this->student?->name ?? __('student')]).($this->term ? ' ('.$this->term->name.')' : '');
+    }
+
+    protected function undoableFileColumns(): array
+    {
+        return ['file_public_id'];
     }
 }

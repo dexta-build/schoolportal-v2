@@ -54,7 +54,7 @@ class QuestionBankController extends Controller
             'tags' => $this->parseTags($validated['tags'] ?? null),
         ]);
 
-        return redirect()->route('admin.question-bank.index')
+        return redirect()->route($this->indexRoute())
             ->with('success', __('Question added to bank.'));
     }
 
@@ -62,6 +62,8 @@ class QuestionBankController extends Controller
 
     public function update(Request $request, QuestionBank $questionBank): RedirectResponse
     {
+        $this->authorizeChange($questionBank);
+
         $validated = $this->validateQuestion($request);
 
         $questionBank->update([
@@ -69,7 +71,7 @@ class QuestionBankController extends Controller
             'tags' => $this->parseTags($validated['tags'] ?? null),
         ]);
 
-        return redirect()->route('admin.question-bank.index')
+        return redirect()->route($this->indexRoute())
             ->with('success', __('Question updated.'));
     }
 
@@ -77,10 +79,32 @@ class QuestionBankController extends Controller
 
     public function destroy(QuestionBank $questionBank): RedirectResponse
     {
+        $this->authorizeChange($questionBank);
+
         $questionBank->delete();
 
-        return redirect()->route('admin.question-bank.index')
+        return redirect()->route($this->indexRoute())
             ->with('success', __('Question removed from bank.'));
+    }
+
+    /**
+     * The bank is shared across the school, but a teacher may only change questions they added.
+     */
+    private function authorizeChange(QuestionBank $questionBank): void
+    {
+        abort_if(
+            auth()->user()->role === 'teacher' && $questionBank->created_by !== auth()->id(),
+            403,
+            __('You can only edit or remove questions you added to the bank.')
+        );
+    }
+
+    /**
+     * Admins and teachers share this controller — send each back to their own page.
+     */
+    private function indexRoute(): string
+    {
+        return auth()->user()->role === 'teacher' ? 'teacher.question-bank.index' : 'admin.question-bank.index';
     }
 
     // ── JSON: Search (used by import modal) ────────────────────────

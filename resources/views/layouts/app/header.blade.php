@@ -79,6 +79,10 @@
             </flux:toast.group>
         @endpersist
 
+        <x-page-expired-dialog />
+        <x-app-confirm-dialog />
+        <x-undo-toast />
+
         @fluxScripts
         @stack('scripts')
     </body>

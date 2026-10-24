@@ -11,6 +11,8 @@ use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\BulkResultController;
 use App\Http\Controllers\Admin\ClassController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\DataExportController;
+use App\Http\Controllers\Admin\EndOfTermController;
 use App\Http\Controllers\Admin\ExamController as AdminExamController;
 use App\Http\Controllers\Admin\GameController as AdminGameController;
 use App\Http\Controllers\Admin\GradingController;
@@ -27,6 +29,7 @@ use App\Http\Controllers\Admin\ResultController;
 use App\Http\Controllers\Admin\ScoreController as AdminScoreController;
 use App\Http\Controllers\Admin\SessionController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\SetupChecklistController;
 use App\Http\Controllers\Admin\StudentController;
 use App\Http\Controllers\Admin\StudentImportController;
 use App\Http\Controllers\Admin\SubjectController;
@@ -46,6 +49,7 @@ use App\Http\Controllers\Parent\NoticeController as ParentNoticeController;
 use App\Http\Controllers\Parent\OverviewController as ParentOverviewController;
 use App\Http\Controllers\PaystackWebhookController;
 use App\Http\Controllers\PwaManifestController;
+use App\Http\Controllers\RecentlyDeletedController;
 use App\Http\Controllers\Student\AchievementController;
 use App\Http\Controllers\Student\AssignmentController as StudentAssignmentController;
 use App\Http\Controllers\Student\DashboardController as StudentDashboardController;
@@ -85,6 +89,7 @@ use App\Http\Controllers\Teacher\StudentImportController as TeacherStudentImport
 use App\Http\Controllers\Teacher\SubjectController as TeacherSubjectController;
 use App\Http\Controllers\Teacher\SubmissionController as TeacherSubmissionController;
 use App\Models\Exam;
+use App\Support\RemovedItemPage;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -153,6 +158,8 @@ Route::prefix('portal')->group(function () {
         // ── School Admin Routes ──
         Route::prefix('admin')->middleware('role:school_admin')->group(function () {
             Route::get('dashboard', AdminDashboardController::class)->name('admin.dashboard');
+            Route::post('setup-checklist/dismiss', [SetupChecklistController::class, 'dismiss'])->name('admin.setup-checklist.dismiss');
+            Route::get('end-of-term', EndOfTermController::class)->name('admin.end-of-term');
             Route::get('analytics', AdminAnalyticsController::class)->name('admin.analytics');
             Route::get('insights', AdminInsightsController::class)->name('admin.insights');
 
@@ -249,6 +256,8 @@ Route::prefix('portal')->group(function () {
             Route::resource('assignments', AssignmentController::class)->names('admin.assignments')->except('show');
 
             // Notices
+            Route::get('recently-deleted', [RecentlyDeletedController::class, 'index'])->name('admin.recently-deleted.index');
+            Route::post('recently-deleted/{type}/{id}/restore', [RecentlyDeletedController::class, 'restore'])->whereNumber('id')->name('admin.recently-deleted.restore');
             Route::resource('notices', NoticeController::class)->names('admin.notices')->except('show');
             Route::post('notices/{notice}/unpublish', [NoticeController::class, 'unpublish'])->name('admin.notices.unpublish');
             Route::post('notices/{notice}/publish', [NoticeController::class, 'publish'])->name('admin.notices.publish');
@@ -345,6 +354,7 @@ Route::prefix('portal')->group(function () {
             Route::post('settings/upload-logo', [SettingsController::class, 'uploadLogo'])->name('admin.settings.upload-logo');
             Route::delete('settings/remove-logo', [SettingsController::class, 'removeLogo'])->name('admin.settings.remove-logo');
             Route::put('settings/portal', [SettingsController::class, 'updatePortal'])->name('admin.settings.portal');
+            Route::get('settings/export-data', DataExportController::class)->name('admin.settings.export-data')->middleware('throttle:sensitive-action');
 
             // Question Bank
             Route::get('question-bank', [QuestionBankController::class, 'index'])->name('admin.question-bank.index');
@@ -408,11 +418,14 @@ Route::prefix('portal')->group(function () {
             Route::get('notices', [TeacherNoticeController::class, 'index'])->name('teacher.notices.index');
             Route::get('notices/create', [TeacherNoticeController::class, 'create'])->name('teacher.notices.create');
             Route::post('notices', [TeacherNoticeController::class, 'store'])->name('teacher.notices.store');
+            Route::get('notices/{notice}', [TeacherNoticeController::class, 'show'])->name('teacher.notices.show')->missing(RemovedItemPage::for('notice', 'teacher.notices.index'));
             Route::get('notices/{notice}/edit', [TeacherNoticeController::class, 'edit'])->name('teacher.notices.edit');
             Route::put('notices/{notice}', [TeacherNoticeController::class, 'update'])->name('teacher.notices.update');
             Route::post('notices/{notice}/unpublish', [TeacherNoticeController::class, 'unpublish'])->name('teacher.notices.unpublish');
             Route::post('notices/{notice}/publish', [TeacherNoticeController::class, 'publish'])->name('teacher.notices.publish');
             Route::delete('notices/{notice}', [TeacherNoticeController::class, 'destroy'])->name('teacher.notices.destroy');
+            Route::get('recently-deleted', [RecentlyDeletedController::class, 'index'])->name('teacher.recently-deleted.index');
+            Route::post('recently-deleted/{type}/{id}/restore', [RecentlyDeletedController::class, 'restore'])->whereNumber('id')->name('teacher.recently-deleted.restore');
 
             // Quizzes
             Route::get('quizzes', [TeacherQuizController::class, 'index'])->name('teacher.quizzes.index');
@@ -518,7 +531,7 @@ Route::prefix('portal')->group(function () {
 
             // Results
             Route::get('results', [StudentResultController::class, 'index'])->name('student.results.index');
-            Route::get('results/{result}', [StudentResultController::class, 'show'])->name('student.results.show');
+            Route::get('results/{result}', [StudentResultController::class, 'show'])->name('student.results.show')->missing(RemovedItemPage::for('result', 'student.results.index'));
 
             // Report Cards
             Route::get('report-cards', [StudentReportCardController::class, 'index'])->name('student.report-cards.index');
@@ -553,7 +566,7 @@ Route::prefix('portal')->group(function () {
             Route::post('exams/attempt/{attempt}/tab-switch', [StudentExamController::class, 'tabSwitch'])->name('student.exams.tab-switch');
             Route::post('exams/attempt/{attempt}/submit', [StudentExamController::class, 'submit'])->name('student.exams.submit');
             Route::get('exams/attempt/{attempt}/results', [StudentExamController::class, 'results'])->name('student.exams.results');
-            Route::get('exams/{exam}', [StudentExamController::class, 'show'])->name('student.exams.show');
+            Route::get('exams/{exam}', [StudentExamController::class, 'show'])->name('student.exams.show')->missing(RemovedItemPage::for('exam', 'student.exams.index'));
             Route::post('exams/{exam}/start', [StudentExamController::class, 'start'])->name('student.exams.start');
 
             // Games
@@ -564,7 +577,7 @@ Route::prefix('portal')->group(function () {
 
             // Notices
             Route::get('notices', [StudentNoticeController::class, 'index'])->name('student.notices.index');
-            Route::get('notices/{notice}', [StudentNoticeController::class, 'show'])->name('student.notices.show');
+            Route::get('notices/{notice}', [StudentNoticeController::class, 'show'])->name('student.notices.show')->missing(RemovedItemPage::for('notice', 'student.notices.index'));
 
             // Help Guide
             Route::get('help', [HelpController::class, 'student'])->name('student.help');
@@ -608,7 +621,7 @@ Route::prefix('portal')->group(function () {
 
             // Notices
             Route::get('notices', [ParentNoticeController::class, 'index'])->name('parent.notices.index');
-            Route::get('notices/{notice}', [ParentNoticeController::class, 'show'])->name('parent.notices.show');
+            Route::get('notices/{notice}', [ParentNoticeController::class, 'show'])->name('parent.notices.show')->missing(RemovedItemPage::for('notice', 'parent.notices.index'));
 
             // Help Guide
             Route::get('help', [HelpController::class, 'parent'])->name('parent.help');
@@ -631,6 +644,7 @@ Route::prefix('portal')->group(function () {
             Route::put('schools/{school}', [SuperAdminSchoolController::class, 'update'])->name('super-admin.schools.update');
             Route::post('schools/{school}/activate', [SuperAdminSchoolController::class, 'activate'])->name('super-admin.schools.activate');
             Route::post('schools/{school}/deactivate', [SuperAdminSchoolController::class, 'deactivate'])->name('super-admin.schools.deactivate');
+            Route::get('schools/{school}/export-data', [SuperAdminSchoolController::class, 'exportData'])->name('super-admin.schools.export-data')->middleware('throttle:sensitive-action');
             Route::delete('schools/{school}', [SuperAdminSchoolController::class, 'destroy'])->name('super-admin.schools.destroy')->middleware('throttle:sensitive-action');
             Route::post('schools/{school}/reset-admin-password', [SuperAdminSchoolController::class, 'resetAdminPassword'])->name('super-admin.schools.reset-admin-password');
             Route::get('schools/{school}/admins/create', [SuperAdminSchoolController::class, 'createAdmin'])->name('super-admin.schools.create-admin');
@@ -653,19 +667,16 @@ Route::prefix('portal')->group(function () {
             Route::get('students', [SuperAdminStudentController::class, 'index'])->name('super-admin.students.index');
             Route::get('students/create', [SuperAdminStudentController::class, 'create'])->name('super-admin.students.create');
             Route::post('students', [SuperAdminStudentController::class, 'store'])->name('super-admin.students.store');
-            Route::delete('students/{student}', [SuperAdminStudentController::class, 'destroy'])->name('super-admin.students.destroy');
 
             // Teachers (cross-school)
             Route::get('teachers', [SuperAdminTeacherController::class, 'index'])->name('super-admin.teachers.index');
             Route::get('teachers/create', [SuperAdminTeacherController::class, 'create'])->name('super-admin.teachers.create');
             Route::post('teachers', [SuperAdminTeacherController::class, 'store'])->name('super-admin.teachers.store');
-            Route::delete('teachers/{teacher}', [SuperAdminTeacherController::class, 'destroy'])->name('super-admin.teachers.destroy');
 
             // Parents (cross-school)
             Route::get('parents', [SuperAdminParentController::class, 'index'])->name('super-admin.parents.index');
             Route::get('parents/create', [SuperAdminParentController::class, 'create'])->name('super-admin.parents.create');
             Route::post('parents', [SuperAdminParentController::class, 'store'])->name('super-admin.parents.store');
-            Route::delete('parents/{parent}', [SuperAdminParentController::class, 'destroy'])->name('super-admin.parents.destroy');
 
             // Announcements
             Route::get('announcements', [SuperAdminAnnouncementController::class, 'index'])->name('super-admin.announcements.index');
@@ -687,6 +698,7 @@ Route::prefix('portal')->group(function () {
             // Platform Settings
             Route::get('settings', [PlatformSettingsController::class, 'index'])->name('super-admin.settings.index');
             Route::put('settings', [PlatformSettingsController::class, 'update'])->name('super-admin.settings.update');
+            Route::put('settings/help-videos', [PlatformSettingsController::class, 'updateHelpVideos'])->name('super-admin.settings.help-videos');
 
             // Platform Analytics
             Route::get('analytics', SuperAdminAnalyticsController::class)->name('super-admin.analytics');

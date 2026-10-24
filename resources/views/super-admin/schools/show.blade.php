@@ -75,15 +75,30 @@
                         get canDelete() { return this.nameInput === this.expectedName; },
                     }"
                 >
-                    <flux:button
-                        variant="danger"
-                        size="sm"
-                        icon="trash"
-                        x-on:click.prevent="open = true"
-                        aria-label="{{ __('Permanently delete :name', ['name' => $school->name]) }}"
-                    >
-                        {{ __('Delete') }}
-                    </flux:button>
+                    @if ($school->canBePermanentlyDeleted() && $dataExport)
+                        <flux:button
+                            variant="danger"
+                            size="sm"
+                            icon="trash"
+                            x-on:click.prevent="open = true"
+                            aria-label="{{ __('Permanently delete :name', ['name' => $school->name]) }}"
+                        >
+                            {{ __('Delete') }}
+                        </flux:button>
+                    @else
+                        {{-- Deleting a school wipes its whole history: deactivate, wait, export its data, then delete --}}
+                        @php
+                            $deleteHint = match (true) {
+                                ! $school->deletableFrom() => __('Deactivate the school first. It can be deleted :days days later.', ['days' => \App\Models\School::DELETION_WAITING_DAYS]),
+                                ! $school->canBePermanentlyDeleted() => __('Can be deleted from :date (:days days after deactivation).', ['date' => $school->deletableFrom()->format('j M Y'), 'days' => \App\Models\School::DELETION_WAITING_DAYS]),
+                                default => __('Download the data export first, so the school keeps a copy of its records.'),
+                            };
+                        @endphp
+                        <flux:button variant="danger" size="sm" icon="trash" disabled title="{{ $deleteHint }}" aria-describedby="delete-school-hint">
+                            {{ __('Delete') }}
+                        </flux:button>
+                        <p id="delete-school-hint" class="mt-1 max-w-xs text-xs text-zinc-500 dark:text-zinc-400">{{ $deleteHint }}</p>
+                    @endif
 
                     <template x-teleport="body">
                         <div
@@ -207,6 +222,31 @@
                     <flux:callout.text class="text-xs mt-1">{{ __('Deactivated on :date', ['date' => $school->deactivated_at->format('M j, Y g:i A')]) }}</flux:callout.text>
                 @endif
             </flux:callout>
+        @endif
+
+        {{-- Before deletion: hand the school a full copy of its records --}}
+        @if (! $school->is_active && ! $school->isPlatform())
+            <div class="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-800">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="max-w-2xl">
+                        <flux:heading size="sm">{{ __('Data export') }}</flux:heading>
+                        <flux:text class="mt-1">
+                            {{ __('A ZIP with every record of this school as spreadsheets (CSV): students, scores, report cards, CBT, notices, audit logs and more, plus links to its uploaded files. Passwords are never included. It is required before the school can be deleted.') }}
+                        </flux:text>
+                        @if ($dataExport)
+                            <p class="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-green-700 dark:text-green-400">
+                                <flux:icon.check-circle class="size-4" />
+                                {{ __('Exported :date by :name', ['date' => $dataExport->created_at->format('j M Y, g:i A'), 'name' => $dataExport->user?->name ?? __('a super admin')]) }}
+                            </p>
+                        @else
+                            <p class="mt-2 text-sm font-medium text-amber-700 dark:text-amber-400">{{ __('Not exported yet.') }}</p>
+                        @endif
+                    </div>
+                    <flux:button variant="{{ $dataExport ? 'subtle' : 'primary' }}" size="sm" icon="arrow-down-tray" href="{{ route('super-admin.schools.export-data', $school) }}">
+                        {{ $dataExport ? __('Download again') : __('Download data export') }}
+                    </flux:button>
+                </div>
+            </div>
         @endif
 
         {{-- Deactivate modal --}}

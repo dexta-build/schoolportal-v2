@@ -1,5 +1,7 @@
 <x-layouts::app :title="__('Parent Dashboard')">
     @php
+        // The school decides whether parents see CBT results
+        $cbtResultsForParents = app('current.school')->featureEnabled('enable_cbt_results_for_parents');
         $hour = (int) now()->format('G');
         $timeGreeting = match (true) {
             $hour >= 5 && $hour < 12  => __('Good morning'),
@@ -29,7 +31,7 @@
         {{-- ── Family Summary Stats ───────────────────────────────── --}}
         @if ($children->isNotEmpty())
             <section aria-label="{{ __('Summary statistics') }}">
-                <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+                <div class="grid grid-cols-2 gap-3 sm:gap-4 {{ $cbtResultsForParents ? 'lg:grid-cols-4' : 'lg:grid-cols-3' }}">
                     <div class="stat-card stat-card-blue dash-animate dash-animate-delay-1">
                         <div class="flex items-center gap-3">
                             <div class="stat-icon bg-blue-500/15">
@@ -48,12 +50,13 @@
                                 <flux:icon.document-text class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                             </div>
                             <div class="min-w-0">
-                                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Uploaded Results') }}</p>
+                                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Result Sheets (PDF)') }}</p>
                                 <p class="stat-value text-zinc-900 dark:text-white">{{ number_format($totalResults) }}</p>
                             </div>
                         </div>
                     </div>
 
+                    @if ($cbtResultsForParents)
                     <a href="{{ route('parent.cbt.index') }}" wire:navigate class="stat-card dash-animate dash-animate-delay-3 hover:shadow-md transition-shadow" style="border-left-color: #6366f1;">
                         <div class="flex items-center gap-3">
                             <div class="stat-icon bg-indigo-500/15">
@@ -65,6 +68,7 @@
                             </div>
                         </div>
                     </a>
+                    @endif
 
                     <div class="stat-card stat-card-purple dash-animate dash-animate-delay-4">
                         <div class="flex items-center gap-3">
@@ -87,9 +91,12 @@
                 {{-- Child Selector Tabs (multiple children) --}}
                 @if ($children->count() > 1)
                     <div class="dash-panel dash-animate dash-animate-delay-3" style="padding: 0;">
-                        <div class="flex items-center gap-1 p-1.5 overflow-x-auto" style="scrollbar-width: none;">
+                        <div class="flex items-center gap-1 p-1.5 overflow-x-auto" style="scrollbar-width: none;" role="tablist" aria-label="{{ __('Choose a child') }}">
                             @foreach ($children as $child)
                                 <button
+                                    type="button"
+                                    role="tab"
+                                    :aria-selected="sel === {{ $loop->index }}"
                                     @click="sel = {{ $loop->index }}"
                                     :class="sel === {{ $loop->index }}
                                         ? 'bg-[#000c99] text-white shadow-sm'
@@ -166,7 +173,7 @@
                                         <flux:icon.document-text class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                                     </div>
                                     <div class="min-w-0">
-                                        <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Uploaded Results') }}</p>
+                                        <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Result Sheets (PDF)') }}</p>
                                         <p class="stat-value text-zinc-900 dark:text-white">{{ $stats['results_count'] ?? 0 }}</p>
                                     </div>
                                 </div>
@@ -196,7 +203,7 @@
                         </div>
 
                         {{-- CBT Breakdown --}}
-                        @if (($stats['cbt_taken'] ?? 0) > 0 || true)
+                        @if ($cbtResultsForParents)
                             <div class="dash-panel" style="margin-bottom: 0;">
                                 <div class="flex items-center gap-2 mb-3">
                                     <flux:icon.computer-desktop class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -225,47 +232,49 @@
                         {{-- Navigation Tiles --}}
                         <div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
                             <a href="{{ route('parent.children.results', $child) }}" wire:navigate
-                               class="dash-panel group flex flex-col items-center gap-2 py-4 hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
+                               class="dash-panel group flex flex-col items-center gap-2 py-4 px-2 min-h-[96px] hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
                                 <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 group-hover:scale-110 transition-transform">
                                     <flux:icon.document-text class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                                 </div>
-                                <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{{ __('Uploaded Results') }}</span>
+                                <span class="text-xs font-semibold leading-tight text-center text-zinc-700 dark:text-zinc-300">{{ __('Result Sheets (PDF)') }}</span>
                             </a>
                             <a href="{{ route('parent.children.report-cards', $child) }}" wire:navigate
-                               class="dash-panel group flex flex-col items-center gap-2 py-4 hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
+                               class="dash-panel group flex flex-col items-center gap-2 py-4 px-2 min-h-[96px] hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
                                 <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 group-hover:scale-110 transition-transform">
                                     <flux:icon.document-chart-bar class="w-5 h-5 text-blue-600 dark:text-blue-400" />
                                 </div>
-                                <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{{ __('Report Cards') }}</span>
+                                <span class="text-xs font-semibold leading-tight text-center text-zinc-700 dark:text-zinc-300">{{ __('Report Cards') }}</span>
                             </a>
                             <a href="{{ route('parent.children.assignments', $child) }}" wire:navigate
-                               class="dash-panel group flex flex-col items-center gap-2 py-4 hover:shadow-md hover:border-purple-200 dark:hover:border-purple-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
+                               class="dash-panel group flex flex-col items-center gap-2 py-4 px-2 min-h-[96px] hover:shadow-md hover:border-purple-200 dark:hover:border-purple-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
                                 <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 group-hover:scale-110 transition-transform">
                                     <flux:icon.clipboard-document-list class="w-5 h-5 text-purple-600 dark:text-purple-400" />
                                 </div>
-                                <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{{ __('Assignments') }}</span>
+                                <span class="text-xs font-semibold leading-tight text-center text-zinc-700 dark:text-zinc-300">{{ __('Assignments') }}</span>
                             </a>
                             <a href="{{ route('parent.children.quizzes', $child) }}" wire:navigate
-                               class="dash-panel group flex flex-col items-center gap-2 py-4 hover:shadow-md hover:border-amber-200 dark:hover:border-amber-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
+                               class="dash-panel group flex flex-col items-center gap-2 py-4 px-2 min-h-[96px] hover:shadow-md hover:border-amber-200 dark:hover:border-amber-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
                                 <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 group-hover:scale-110 transition-transform">
                                     <flux:icon.academic-cap class="w-5 h-5 text-amber-600 dark:text-amber-400" />
                                 </div>
-                                <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{{ __('Quizzes') }}</span>
+                                <span class="text-xs font-semibold leading-tight text-center text-zinc-700 dark:text-zinc-300">{{ __('Quizzes') }}</span>
                             </a>
                             <a href="{{ route('parent.children.games', $child) }}" wire:navigate
-                               class="dash-panel group flex flex-col items-center gap-2 py-4 hover:shadow-md hover:border-pink-200 dark:hover:border-pink-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
+                               class="dash-panel group flex flex-col items-center gap-2 py-4 px-2 min-h-[96px] hover:shadow-md hover:border-pink-200 dark:hover:border-pink-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
                                 <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-pink-100 dark:bg-pink-900/30 group-hover:scale-110 transition-transform">
                                     <flux:icon.puzzle-piece class="w-5 h-5 text-pink-600 dark:text-pink-400" />
                                 </div>
-                                <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{{ __('Games') }}</span>
+                                <span class="text-xs font-semibold leading-tight text-center text-zinc-700 dark:text-zinc-300">{{ __('Games') }}</span>
                             </a>
+                            @if ($cbtResultsForParents)
                             <a href="{{ route('parent.children.cbt-results', $child) }}" wire:navigate
-                               class="dash-panel group flex flex-col items-center gap-2 py-4 hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
+                               class="dash-panel group flex flex-col items-center gap-2 py-4 px-2 min-h-[96px] hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800/50 transition-all cursor-pointer" style="margin-bottom: 0;">
                                 <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 group-hover:scale-110 transition-transform">
                                     <flux:icon.computer-desktop class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                                 </div>
-                                <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{{ __('CBT Results') }}</span>
+                                <span class="text-xs font-semibold leading-tight text-center text-zinc-700 dark:text-zinc-300">{{ __('CBT Results') }}</span>
                             </a>
+                            @endif
                         </div>
 
                         {{-- Profile link (mobile only — desktop has it in the header) --}}

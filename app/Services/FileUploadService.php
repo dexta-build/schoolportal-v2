@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use Cloudinary\Api\Admin\AdminApi;
 use Cloudinary\Api\Upload\UploadApi;
 use Cloudinary\Asset\File;
 use Cloudinary\Configuration\Configuration;
@@ -92,6 +93,63 @@ class FileUploadService
 
             return false;
         }
+    }
+
+    /**
+     * Delete a file whose resource type isn't stored (notice attachments are images or raw documents,
+     * assignment files are raw). Cloudinary answers "not found" for the wrong type, so try both.
+     */
+    public function deleteAnyType(string $publicId): bool
+    {
+        try {
+            foreach (['image', 'raw'] as $resourceType) {
+                $response = $this->uploader->destroy($publicId, ['resource_type' => $resourceType]);
+                if (($response['result'] ?? null) === 'ok') {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            Log::warning('Cloudinary delete failed', [
+                'public_id' => $publicId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Remove everything a deleted school stored on Cloudinary (schoolportal/{id}/…): images, documents
+     * and videos, then the empty folders. Returns how many files were deleted. Throws on API errors so
+     * the queued job retries.
+     */
+    public function deleteSchoolFolder(int $schoolId): int
+    {
+        $root = "schoolportal/{$schoolId}";
+        $admin = new AdminApi;
+        $deleted = 0;
+
+        foreach (['image', 'raw', 'video'] as $resourceType) {
+            // Each call removes up to 1000 files; "partial" means there are more
+            do {
+                $response = $admin->deleteAssetsByPrefix("{$root}/", ['resource_type' => $resourceType]);
+                $deleted += count($response['deleted'] ?? []);
+            } while ($response['partial'] ?? false);
+        }
+
+        // Folders can only go once empty, deepest first. Not worth failing the job over.
+        try {
+            foreach ($admin->subFolders($root)['folders'] ?? [] as $folder) {
+                $admin->deleteFolder($folder['path']);
+            }
+            $admin->deleteFolder($root);
+        } catch (\Throwable $e) {
+            Log::info('Could not remove empty Cloudinary folders for deleted school', ['school_id' => $schoolId, 'error' => $e->getMessage()]);
+        }
+
+        return $deleted;
     }
 
     /**

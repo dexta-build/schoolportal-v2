@@ -26,6 +26,7 @@ class ClassSubject extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
             'class_id' => 'integer',
             'subject_id' => 'integer',
             'teacher_id' => 'integer',

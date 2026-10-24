@@ -1,7 +1,7 @@
-<x-layouts::app :title="__('Uploaded Results')">
+<x-layouts::app :title="__('Result Sheets (PDF)')">
     <div class="space-y-6">
         <x-admin-header
-            :title="__('Uploaded Results')"
+            :title="__('Result Sheets (PDF)')"
             :description="__('View your children\'s uploaded academic results')"
         />
 

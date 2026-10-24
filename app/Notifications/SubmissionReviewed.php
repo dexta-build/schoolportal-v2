@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
+use App\Helpers\PortalUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -34,6 +35,7 @@ class SubmissionReviewed extends Notification implements ShouldQueue
             'quiz' => 'quiz',
             'game' => 'educational game',
             'report_card' => 'report card',
+            'score_amendment' => 'score correction',
             default => $this->entityType,
         };
 
@@ -56,7 +58,7 @@ class SubmissionReviewed extends Notification implements ShouldQueue
         }
 
         return $message
-            ->action(__('View My Submissions'), url('/portal/teacher/submissions'))
+            ->action(__('View My Submissions'), PortalUrl::forRecipient($notifiable, '/portal/teacher/submissions'))
             ->salutation(__('Regards, DX-SchoolPortal'));
     }
 }

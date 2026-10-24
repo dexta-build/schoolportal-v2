@@ -40,6 +40,7 @@ class ReportCardConfig extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
             'psychomotor_traits' => 'array',
             'affective_traits' => 'array',
             'trait_rating_scale' => 'array',

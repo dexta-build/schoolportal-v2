@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\Exam;
 use App\Models\Quiz;
+use App\Models\School;
 use App\Models\User;
 use App\Notifications\DeadlineReminderNotification;
 use Carbon\Carbon;
@@ -65,7 +66,7 @@ class SendDeadlineReminders extends Command
 
     private function sendExamReminders(Carbon $start, Carbon $end): void
     {
-        $exams = Exam::withoutGlobalScopes()
+        $exams = Exam::withoutGlobalScope('tenant')
             ->where('is_published', true)
             ->whereBetween('available_until', [$start, $end])
             ->get();
@@ -81,6 +82,11 @@ class SendDeadlineReminders extends Command
 
             foreach ($students as $student) {
                 $student->notify(new DeadlineReminderNotification('exam', $exam->title, $exam->id, $expiresLabel, 'student'));
+            }
+
+            // Parents only hear about CBTs when the school shows them CBT results
+            if (! School::withoutGlobalScopes()->find($exam->school_id)?->featureEnabled('enable_cbt_results_for_parents')) {
+                continue;
             }
 
             $studentIds = $students->pluck('id');

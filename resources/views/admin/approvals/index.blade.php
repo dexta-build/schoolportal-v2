@@ -27,11 +27,12 @@
                 <option value="">{{ __('All Types') }}</option>
                 <option value="result" @selected(request('type') === 'result')>{{ __('Results') }}</option>
                 <option value="assignment" @selected(request('type') === 'assignment')>{{ __('Assignments') }}</option>
-                <option value="notice" @selected(request('type') === 'notice')>{{ __('Notices') }}</option>
+                <option value="notice" @selected(request('type') === 'notice')>{{ __('Notice Board') }}</option>
                 <option value="quiz" @selected(request('type') === 'quiz')>{{ __('Quizzes') }}</option>
                 <option value="game" @selected(request('type') === 'game')>{{ __('Games') }}</option>
                 <option value="exam" @selected(request('type') === 'exam')>{{ __('Exams') }}</option>
                 <option value="report_card" @selected(request('type') === 'report_card')>{{ __('Report Cards') }}</option>
+                <option value="score_amendment" @selected(request('type') === 'score_amendment')>{{ __('Score Corrections') }}</option>
             </flux:select>
         </div>
 
@@ -134,8 +135,10 @@
                                     @endif
                                 @elseif ($action->entity_type === 'report_card')
                                     <flux:badge color="teal" size="sm">{{ __('Report Card') }}</flux:badge>
+                                @elseif ($action->entity_type === 'score_amendment')
+                                    <flux:badge color="orange" size="sm">{{ __('Score Correction') }}</flux:badge>
                                 @else
-                                    <flux:badge size="sm">{{ ucfirst($action->entity_type) }}</flux:badge>
+                                    <flux:badge size="sm">{{ ucfirst(str_replace('_', ' ', $action->entity_type)) }}</flux:badge>
                                 @endif
 
                                 @if ($action->status === 'pending')
@@ -157,6 +160,22 @@
                                     <p class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
                                         {{ $reportCard->student?->name ?? '' }} &middot; {{ $reportCard->class?->name ?? '' }} &middot; {{ $reportCard->term?->name ?? '' }}, {{ $reportCard->session?->name ?? '' }}
                                     </p>
+                                @endif
+                            @endif
+                            @if ($action->entity_type === 'score_amendment')
+                                @php $amendment = $scoreAmendments[$action->entity_id] ?? null; @endphp
+                                @if ($amendment)
+                                    <p class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
+                                        {{ $amendment->student?->name }} &middot; {{ $amendment->class?->name }} &middot; {{ $amendment->subject?->name }} ({{ $amendment->scoreComponent?->name }}) &middot; {{ $amendment->term?->name }}
+                                    </p>
+                                    <p class="text-sm mt-1">
+                                        <span class="font-mono text-zinc-500 line-through">{{ $amendment->old_score + 0 }}</span>
+                                        <span class="text-zinc-400" aria-hidden="true">→</span>
+                                        <span class="sr-only">{{ __('changed to') }}</span>
+                                        <span class="font-mono font-semibold text-zinc-900 dark:text-white">{{ $amendment->new_score + 0 }}</span>
+                                        <span class="text-xs text-zinc-500">/ {{ $amendment->scoreComponent?->max_score }}</span>
+                                    </p>
+                                    <p class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">{{ __('Teacher\'s reason:') }} {{ $amendment->reason }}</p>
                                 @endif
                             @endif
                             @if ($action->rejection_reason)
@@ -530,7 +549,7 @@
                                     <flux:button type="submit" variant="primary" size="xs">{{ __('Approve') }}</flux:button>
                                 </form>
 
-                                @include('admin.approvals._reject-modal', ['action' => $action, 'entityLabel' => ucfirst($action->entity_type)])
+                                @include('admin.approvals._reject-modal', ['action' => $action, 'entityLabel' => ucfirst(str_replace('_', ' ', $action->entity_type))])
                             @endif
                         </div>
                     </div>

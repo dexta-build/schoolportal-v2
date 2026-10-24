@@ -31,8 +31,9 @@
                             @if ((int) $subject->created_by === (int) auth()->id() && $subject->classes_count === $subject->classes->count())
                                 <x-confirm-delete
                                     :action="route('teacher.subjects.destroy', $subject)"
-                                    :title="__('Delete Subject')"
-                                    :message="__('Delete this subject from your classes? Subjects with CBT or score history will be protected.')"
+                                    :title="__('Delete :name?', ['name' => $subject->name])"
+                                    :message="__('It will be removed from your classes. Subjects with CBT or score history are protected and will not be deleted.')"
+                                    :buttonLabel="__('Delete')"
                                     :ariaLabel="__('Delete :name', ['name' => $subject->name])"
                                 />
                             @endif

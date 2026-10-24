@@ -8,13 +8,14 @@ use App\Services\FileUploadService;
 use App\Traits\Auditable;
 use App\Traits\BelongsToTenant;
 use App\Traits\HasCloudinaryImages;
+use App\Traits\UndoableDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Notice extends Model
 {
-    use Auditable, BelongsToTenant, HasCloudinaryImages, HasFactory;
+    use Auditable, BelongsToTenant, HasCloudinaryImages, HasFactory, UndoableDeletes;
 
     protected $fillable = [
         'school_id',
@@ -40,6 +41,7 @@ class Notice extends Model
     protected function casts(): array
     {
         return [
+            'approved_by' => 'integer',
             'school_id' => 'integer',
             'created_by' => 'integer',
             'target_levels' => 'array',
@@ -54,6 +56,56 @@ class Notice extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function undoableTitle(): string
+    {
+        return $this->title;
+    }
+
+    protected function undoableFileColumns(): array
+    {
+        return ['file_public_id', 'image_public_id'];
+    }
+
+    /**
+     * Whether a student, parent or teacher may read this notice — the same targeting the notice
+     * lists apply, so a notice can't be opened by ID by someone it wasn't addressed to.
+     */
+    public function isVisibleTo(User $user): bool
+    {
+        if (! $this->is_published || ($this->expires_at !== null && $this->expires_at->lt(now()))) {
+            return false;
+        }
+
+        $roles = array_filter((array) $this->target_roles);
+        if ($roles !== [] && ! in_array($user->role, $roles, true)) {
+            return false;
+        }
+
+        $levels = array_map('intval', array_filter((array) $this->target_levels));
+        $classes = array_map('intval', array_filter((array) $this->target_classes));
+
+        if ($levels === [] && $classes === []) {
+            return true;
+        }
+
+        // A class/level matches when it is in the targets, or that target list is empty
+        $matches = fn (?int $classId, ?int $levelId): bool => ($levels === [] || in_array((int) $levelId, $levels, true))
+            && ($classes === [] || in_array((int) $classId, $classes, true));
+
+        return match ($user->role) {
+            'student' => ($profile = $user->studentProfile()->with('class:id,level_id')->first())
+                && $matches($profile->class_id, $profile->class?->level_id),
+            'parent' => StudentProfile::with('class:id,level_id')
+                ->whereIn('user_id', $user->children()->pluck('student_id'))
+                ->get()
+                ->contains(fn (StudentProfile $child): bool => $matches($child->class_id, $child->class?->level_id)),
+            // Teachers are addressed by level when a notice is sent
+            'teacher' => $levels === [] || in_array((int) $user->level_id, $levels, true)
+                || $user->assignedClasses()->whereIn('level_id', $levels)->exists(),
+            default => false,
+        };
     }
 
     /**

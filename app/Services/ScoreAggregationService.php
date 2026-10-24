@@ -10,10 +10,12 @@ use App\Models\ExamAttempt;
 use App\Models\GradingScale;
 use App\Models\ReportCardConfig;
 use App\Models\SchoolClass;
+use App\Models\ScoreAmendment;
 use App\Models\ScoreComponent;
 use App\Models\StudentProfile;
 use App\Models\StudentSubjectScore;
 use App\Models\StudentTermReport;
+use App\Models\StudentTermReportRevision;
 use App\Models\Term;
 use Illuminate\Validation\ValidationException;
 
@@ -59,7 +61,23 @@ class ScoreAggregationService
 
         $normalizedScore = round(($attempt->score / $examMax) * $component->max_score, 2);
 
-        StudentSubjectScore::updateOrCreate(
+        $existing = StudentSubjectScore::withoutGlobalScopes()
+            ->where('student_id', $attempt->student_id)
+            ->where('subject_id', $exam->subject_id)
+            ->where('term_id', $exam->term_id)
+            ->where('score_component_id', $exam->score_component_id)
+            ->first();
+
+        // Locked scores are final — a late or re-graded CBT result waits for an admin to approve it
+        if ($existing?->is_locked) {
+            app(ScoreCorrectionService::class)->recordCbtChange($existing, $normalizedScore, $attempt);
+
+            return;
+        }
+
+        $changed = $existing === null || round((float) $existing->score, 2) !== $normalizedScore;
+
+        StudentSubjectScore::withoutGlobalScopes()->updateOrCreate(
             [
                 'student_id' => $attempt->student_id,
                 'subject_id' => $exam->subject_id,
@@ -77,6 +95,10 @@ class ScoreAggregationService
                 'source_attempt_id' => $attempt->id,
             ]
         );
+
+        if ($changed) {
+            app(ScoreCorrectionService::class)->markReportsStale((int) $exam->class_id, (int) $exam->term_id);
+        }
     }
 
     /**
@@ -474,7 +496,7 @@ class ScoreAggregationService
         ];
         $gradeSnapshot = $this->buildReportGradeSnapshot($schoolId, $levelId, (float) $studentData['average']);
 
-        return StudentTermReport::withoutGlobalScopes()->updateOrCreate(
+        return $this->saveReport(
             [
                 'student_id' => $studentId,
                 'session_id' => $sessionId,
@@ -494,9 +516,98 @@ class ScoreAggregationService
                 'subjects_count' => $studentData['subjects_count'],
                 'position' => $studentData['position'],
                 'out_of' => count($overallPositions),
-                'status' => 'draft',
             ]
         );
+    }
+
+    /**
+     * Create a report, or refresh an existing one without losing its workflow state.
+     *
+     * Regenerating never moves a report back to draft — an approved or published report
+     * stays approved/published, with teacher comments and ratings untouched. When its
+     * content actually changes (e.g. after a score correction) the previous version is kept
+     * as a revision, and students/parents are told if it was already published.
+     *
+     * @param  array<string, mixed>  $keys
+     * @param  array<string, mixed>  $values
+     */
+    private function saveReport(array $keys, array $values): StudentTermReport
+    {
+        $existing = StudentTermReport::withoutGlobalScopes()->where($keys)->first();
+
+        if (! $existing) {
+            return StudentTermReport::withoutGlobalScopes()->create($keys + $values + [
+                'status' => 'draft',
+                'needs_regeneration' => false,
+            ]);
+        }
+
+        $changed = $this->reportContentChanged($existing, $values);
+        $published = $existing->isPublished();
+
+        if ($changed && ($published || $existing->isApproved())) {
+            StudentTermReportRevision::withoutGlobalScopes()->create([
+                'school_id' => $existing->school_id,
+                'student_term_report_id' => $existing->id,
+                'revision_number' => $existing->revision_count + 1,
+                'status_at_revision' => $existing->status,
+                'subject_scores_snapshot' => $existing->subject_scores_snapshot,
+                'total_weighted_score' => $existing->total_weighted_score,
+                'average_weighted_score' => $existing->average_weighted_score,
+                'overall_grade' => $existing->overall_grade,
+                'position' => $existing->position,
+                'out_of' => $existing->out_of,
+                'revised_by' => auth()->id(),
+            ]);
+
+            $values['revision_count'] = $existing->revision_count + 1;
+            $values['revised_at'] = now();
+
+            // Published reports keep a frozen grade snapshot — re-freeze it for the corrected content
+            if ($existing->isFinalized()) {
+                $values['finalized_at'] = now();
+            }
+        }
+
+        $existing->update($values + ['needs_regeneration' => false]);
+
+        if ($changed && $published) {
+            try {
+                app(NotificationService::class)->notifyReportCardRevised($existing);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $existing;
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     */
+    private function reportContentChanged(StudentTermReport $report, array $values): bool
+    {
+        return $this->normaliseSnapshot($report->subject_scores_snapshot) !== $this->normaliseSnapshot($values['subject_scores_snapshot'] ?? null)
+            || round((float) $report->average_weighted_score, 2) !== round((float) ($values['average_weighted_score'] ?? 0), 2)
+            || round((float) $report->total_weighted_score, 2) !== round((float) ($values['total_weighted_score'] ?? 0), 2)
+            || (array_key_exists('position', $values) && $report->position !== $values['position']);
+    }
+
+    /**
+     * Comparable form of a snapshot: MySQL reorders JSON object keys and may return 85 for 85.0,
+     * so sort keys and round numbers before comparing.
+     */
+    private function normaliseSnapshot(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+
+            return array_map(fn (mixed $item): mixed => $this->normaliseSnapshot($item), $value);
+        }
+
+        return is_int($value) || is_float($value) ? round((float) $value, 2) : $value;
     }
 
     /**
@@ -609,7 +720,7 @@ class ScoreAggregationService
         $average = $subjectsCount > 0 ? round($totalScore / $subjectsCount, 2) : 0.0;
         $gradeSnapshot = $this->buildReportGradeSnapshot($schoolId, $levelId, (float) $average);
 
-        return StudentTermReport::withoutGlobalScopes()->updateOrCreate(
+        return $this->saveReport(
             [
                 'student_id' => $studentId,
                 'session_id' => $sessionId,
@@ -627,9 +738,6 @@ class ScoreAggregationService
                 'overall_grade' => $gradeSnapshot['overall_grade'],
                 'overall_grade_label' => $gradeSnapshot['overall_grade_label'],
                 'subjects_count' => $subjectsCount,
-                'position' => null, // updated by generateClassSessionReports
-                'out_of' => null,
-                'status' => 'draft',
             ]
         );
     }
@@ -917,6 +1025,16 @@ class ScoreAggregationService
             ->get()
             ->groupBy(fn ($s) => $s->student_id.'-'.$s->subject_id.'-'.$s->score_component_id);
 
+        // Correction history per score, shown on locked cells
+        $amendments = ScoreAmendment::withoutGlobalScopes()
+            ->where('class_id', $classId)
+            ->where('term_id', $termId)
+            ->whereIn('status', [ScoreAmendment::STATUS_APPLIED, ScoreAmendment::STATUS_PENDING])
+            ->with(['reviewedByUser:id,name'])
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('student_subject_score_id');
+
         $grid = [];
         foreach ($students as $profile) {
             $studentRow = [
@@ -937,14 +1055,26 @@ class ScoreAggregationService
                 foreach ($components as $comp) {
                     $key = $profile->user_id.'-'.$subject->id.'-'.$comp->id;
                     $score = $scores->get($key)?->first();
+                    $history = $score ? $amendments->get($score->id, collect()) : collect();
+                    $lastApplied = $history->firstWhere('status', ScoreAmendment::STATUS_APPLIED);
 
                     $subjectData['components'][$comp->id] = [
                         'component_id' => $comp->id,
                         'component_name' => $comp->short_name,
+                        'score_id' => $score?->id,
                         'score' => $score?->score,
                         'max_score' => $comp->max_score,
                         'is_locked' => $score?->is_locked ?? false,
                         'source_type' => $score?->source_type,
+                        'amended_count' => $history->where('status', ScoreAmendment::STATUS_APPLIED)->count(),
+                        'last_amendment' => $lastApplied ? __('Corrected from :old to :new by :name on :date — :reason', [
+                            'old' => $lastApplied->old_score + 0,
+                            'new' => $lastApplied->new_score + 0,
+                            'name' => $lastApplied->reviewedByUser?->name ?? __('admin'),
+                            'date' => $lastApplied->reviewed_at?->format('j M Y'),
+                            'reason' => $lastApplied->reason,
+                        ]) : null,
+                        'has_pending' => $history->contains('status', ScoreAmendment::STATUS_PENDING),
                     ];
 
                     if ($score && $score->score !== null && $comp->max_score > 0) {

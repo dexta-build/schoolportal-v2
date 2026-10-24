@@ -50,22 +50,16 @@
                         <flux:table.cell class="hidden md:table-cell text-zinc-500">
                             {{ $ann->created_at->format('M j, Y') }}
                         </flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="subtle" size="xs" icon="eye" :href="route('super-admin.announcements.show', $ann)" wire:navigate />
-                                <flux:button variant="subtle" size="xs" icon="pencil-square" :href="route('super-admin.announcements.edit', $ann)" wire:navigate />
+                        <flux:table.cell class="text-end">
+                            <x-row-actions :label="__('Actions for :name', ['name' => $ann->title])">
+                                <flux:menu.item icon="eye" href="{{ route('super-admin.announcements.show', $ann) }}" wire:navigate>{{ __('View') }}</flux:menu.item>
+                                <flux:menu.item icon="pencil-square" href="{{ route('super-admin.announcements.edit', $ann) }}" wire:navigate>{{ __('Edit') }}</flux:menu.item>
                                 @if ($ann->is_active)
-                                    <form method="POST" action="{{ route('super-admin.announcements.deactivate', $ann) }}" class="inline">
-                                        @csrf
-                                        <flux:button variant="subtle" size="xs" icon="pause" type="submit" title="{{ __('Deactivate') }}" />
-                                    </form>
+                                    <x-row-actions.form :action="route('super-admin.announcements.deactivate', $ann)" icon="pause">{{ __('Stop showing') }}</x-row-actions.form>
                                 @else
-                                    <form method="POST" action="{{ route('super-admin.announcements.activate', $ann) }}" class="inline">
-                                        @csrf
-                                        <flux:button variant="subtle" size="xs" icon="play" type="submit" title="{{ __('Activate') }}" />
-                                    </form>
+                                    <x-row-actions.form :action="route('super-admin.announcements.activate', $ann)" icon="play">{{ __('Start showing') }}</x-row-actions.form>
                                 @endif
-                            </div>
+                            </x-row-actions>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty

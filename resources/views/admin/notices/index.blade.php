@@ -1,7 +1,8 @@
-<x-layouts::app :title="__('Notices')">
+<x-layouts::app :title="__('Notice Board')">
     <div class="space-y-6">
         <x-admin-header
-            :title="__('Notices')"
+            :title="__('Notice Board')"
+            :description="__('Posts for the school notice board, with pictures or files. Everyone it is meant for gets a notification.')"
             :action="route('admin.notices.create')"
             :actionLabel="__('Add Notice')"
         />
@@ -50,11 +51,29 @@
                         </flux:table.cell>
                         <flux:table.cell class="hidden md:table-cell text-zinc-500">{{ $notice->expires_at?->format('M j, Y') ?? '—' }}</flux:table.cell>
                         <flux:table.cell class="hidden sm:table-cell text-zinc-500">{{ $notice->created_at->format('M j, Y') }}</flux:table.cell>
-                        <flux:table.cell>
-                            <div class="flex items-center gap-1">
-                                {{-- Preview modal --}}
-                                <div x-data="{ showPreview: false }">
-                                    <flux:button variant="subtle" size="xs" icon="eye" @click="showPreview = true" :aria-label="__('Preview notice')" />
+                        <flux:table.cell class="text-end">
+                            <div x-data="{ showPreview: false }" class="flex justify-end">
+                                <x-row-actions :label="__('Actions for :name', ['name' => $notice->title])">
+                                    <flux:menu.item icon="eye" x-on:click="showPreview = true">{{ __('Preview') }}</flux:menu.item>
+
+                                    {{-- Edit & actions only for notices the admin created --}}
+                                    @if ($notice->created_by === auth()->id())
+                                        <flux:menu.item icon="pencil-square" href="{{ route('admin.notices.edit', $notice) }}" wire:navigate>{{ __('Edit') }}</flux:menu.item>
+
+                                        @if ($notice->is_published)
+                                            <x-row-actions.form :action="route('admin.notices.unpublish', $notice)" icon="eye-slash">{{ __('Unpublish (hide from readers)') }}</x-row-actions.form>
+                                        @elseif ($notice->status === 'approved')
+                                            <x-row-actions.form :action="route('admin.notices.publish', $notice)" icon="megaphone">{{ __('Publish') }}</x-row-actions.form>
+                                        @endif
+
+                                        <flux:menu.separator />
+                                        <x-row-actions.delete
+                                            :action="route('admin.notices.destroy', $notice)"
+                                            :title="__('Delete this notice?')"
+                                            :message="__('Readers will no longer see it. You can undo this straight after deleting, or restore it from Recently deleted within 30 days.')"
+                                        />
+                                    @endif
+                                </x-row-actions>
 
                                     <div x-show="showPreview" x-cloak x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showPreview = false" @keydown.escape.window="showPreview = false">
                                         <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl max-w-2xl w-full mx-auto max-h-[85vh] flex flex-col" @click.stop>
@@ -127,31 +146,6 @@
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-
-                                {{-- Edit & actions only for notices the admin created --}}
-                                @if ($notice->created_by === auth()->id())
-                                    <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.notices.edit', $notice) }}" wire:navigate />
-
-                                    @if ($notice->is_published)
-                                        <form method="POST" action="{{ route('admin.notices.unpublish', $notice) }}">
-                                            @csrf
-                                            <flux:button type="submit" variant="subtle" size="xs" icon="eye-slash" :aria-label="__('Unpublish notice')" />
-                                        </form>
-                                    @elseif ($notice->status === 'approved')
-                                        <form method="POST" action="{{ route('admin.notices.publish', $notice) }}">
-                                            @csrf
-                                            <flux:button type="submit" variant="subtle" size="xs" icon="eye" :aria-label="__('Publish notice')" />
-                                        </form>
-                                    @endif
-
-                                    <x-confirm-delete
-                                        :action="route('admin.notices.destroy', $notice)"
-                                        :title="__('Delete Notice')"
-                                        :message="__('Are you sure you want to delete this notice? This action cannot be undone.')"
-                                        :ariaLabel="__('Delete notice')"
-                                    />
-                                @endif
                             </div>
                         </flux:table.cell>
                     </flux:table.row>

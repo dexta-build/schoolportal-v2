@@ -27,23 +27,26 @@
                             <flux:badge color="zinc" size="sm">{{ ucfirst($session->status) }}</flux:badge>
                         @endif
                     </div>
-                    <div class="flex items-center gap-2">
+                    <x-row-actions :label="__('Actions for :name', ['name' => $session->name])">
+                        <flux:menu.item icon="pencil-square" href="{{ route('admin.sessions.edit', $session) }}" wire:navigate>{{ __('Edit dates') }}</flux:menu.item>
                         @unless ($session->is_current)
-                            <form method="POST" action="{{ route('admin.sessions.activate', $session) }}">
-                                @csrf
-                                <flux:button type="submit" variant="filled" size="xs">{{ __('Activate') }}</flux:button>
-                            </form>
-                        @endunless
-                        <flux:button variant="subtle" size="xs" icon="pencil-square" href="{{ route('admin.sessions.edit', $session) }}" wire:navigate />
-                        @unless ($session->is_current)
-                            <x-confirm-delete
+                            <x-row-actions.form
+                                :action="route('admin.sessions.activate', $session)"
+                                icon="check-circle"
+                                :confirm="[
+                                    'title' => __('Make :name the current session?', ['name' => $session->name]),
+                                    'message' => __('Score entry, CBT, results and reports will use this session from now on, for everyone in the school.'),
+                                    'confirmLabel' => __('Make current'),
+                                ]"
+                            >{{ __('Make current session') }}</x-row-actions.form>
+                            <flux:menu.separator />
+                            <x-row-actions.delete
                                 :action="route('admin.sessions.destroy', $session)"
-                                :title="__('Delete Session')"
-                                :message="__('This will delete the session and all its terms. This action cannot be undone.')"
-                                :ariaLabel="__('Delete session')"
+                                :title="__('Delete :name?', ['name' => $session->name])"
+                                :message="__('This deletes the session and all its terms. This cannot be undone.')"
                             />
                         @endunless
-                    </div>
+                    </x-row-actions>
                 </div>
 
                 {{-- Session Details --}}

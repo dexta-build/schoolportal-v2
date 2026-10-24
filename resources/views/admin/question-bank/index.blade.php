@@ -1,3 +1,8 @@
+@php
+    // Shared by admins and teachers — each uses their own routes. Teachers may only change their own questions.
+    $qbPrefix = auth()->user()->role === 'teacher' ? 'teacher' : 'admin';
+    $isTeacher = $qbPrefix === 'teacher';
+@endphp
 <x-layouts::app :title="__('Question Bank')">
     <div
         class="space-y-6"
@@ -10,9 +15,12 @@
                 this.showEdit = true;
             },
             confirmDelete(id, name) {
-                if (confirm('{{ __('Remove this question from the bank? It will not affect exams that already imported it.') }}')) {
-                    document.getElementById('delete-form-' + id).submit();
-                }
+                appConfirm({
+                    title: @js(__('Remove this question?')),
+                    message: @js(__('It will be removed from the question bank. Exams that already use it are not affected.')),
+                    confirmLabel: @js(__('Remove question')),
+                    variant: 'danger',
+                }).then(ok => ok && document.getElementById('delete-form-' + id).submit());
             }
         }"
     >
@@ -64,7 +72,7 @@
             </flux:select>
             <flux:button type="submit" variant="ghost" icon="magnifying-glass">{{ __('Filter') }}</flux:button>
             @if (request()->hasAny(['q', 'subject_id', 'type', 'difficulty']))
-                <flux:button href="{{ route('admin.question-bank.index') }}" variant="ghost" icon="x-mark" wire:navigate>
+                <flux:button href="{{ route($qbPrefix.'.question-bank.index') }}" variant="ghost" icon="x-mark" wire:navigate>
                     {{ __('Clear') }}
                 </flux:button>
             @endif
@@ -133,6 +141,7 @@
                             </div>
 
                             {{-- Actions --}}
+                            @if (! $isTeacher || (int) $question->created_by === (int) auth()->id())
                             <div class="flex shrink-0 items-center gap-2">
                                 <flux:button
                                     size="sm"
@@ -157,7 +166,7 @@
                                     ]) }})"
                                 >{{ __('Edit') }}</flux:button>
 
-                                <form id="delete-form-{{ $question->id }}" method="POST" action="{{ route('admin.question-bank.destroy', $question) }}" class="hidden">
+                                <form id="delete-form-{{ $question->id }}" method="POST" action="{{ route($qbPrefix.'.question-bank.destroy', $question) }}" class="hidden">
                                     @csrf
                                     @method('DELETE')
                                 </form>
@@ -169,6 +178,7 @@
                                     @click="confirmDelete({{ $question->id }}, '{{ addslashes(Str::limit($question->question_text, 30)) }}')"
                                 />
                             </div>
+                            @endif
                         </div>
                     </flux:card>
                 @endforeach
@@ -186,7 +196,7 @@
 
             <form
                 method="POST"
-                action="{{ route('admin.question-bank.store') }}"
+                action="{{ route($qbPrefix.'.question-bank.store') }}"
                 x-data="questionForm({})"
                 class="space-y-4"
             >
@@ -206,7 +216,7 @@
             <template x-if="editQuestion">
                 <form
                     method="POST"
-                    :action="`{{ url('portal/admin/question-bank') }}/` + editQuestion.id"
+                    :action="`{{ url('portal/'.$qbPrefix.'/question-bank') }}/` + editQuestion.id"
                     x-data="questionForm(editQuestion)"
                     class="space-y-4"
                 >

@@ -10,6 +10,7 @@ use App\Models\ExamAttempt;
 use App\Models\ExamQuestion;
 use App\Models\SchoolClass;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
@@ -22,8 +23,12 @@ use Livewire\Component;
 class TheoryGrader extends Component
 {
     // ── Configuration ─────────────────────────────────────────────
+    // Locked: set by the page and the server only. Grading trusts these values (which exam,
+    // whose attempt, the question's maximum points), so the browser must not change them.
+    #[Locked]
     public int $examId;
 
+    #[Locked]
     public string $role = 'admin';   // 'admin' | 'teacher'
 
     public string $mode = 'by_student';  // 'by_student' | 'by_question'
@@ -38,23 +43,29 @@ class TheoryGrader extends Component
 
     public string $comment = '';
 
-    // ── Loaded data ───────────────────────────────────────────────
+    // ── Loaded data (server-derived, so locked) ───────────────────
     /** @var array<string, mixed> */
+    #[Locked]
     public array $exam = [];
 
     /** @var list<array<string, mixed>> */
+    #[Locked]
     public array $theoryQuestions = [];
 
     /** @var list<array<string, mixed>> */
+    #[Locked]
     public array $attempts = [];
 
     /** @var array<string, mixed>|null */
+    #[Locked]
     public ?array $currentQuestion = null;
 
     /** @var array<string, mixed>|null */
+    #[Locked]
     public ?array $currentAttempt = null;
 
     /** @var array<string, mixed>|null */
+    #[Locked]
     public ?array $currentAnswer = null;
 
     // ── UI feedback ───────────────────────────────────────────────
@@ -71,6 +82,13 @@ class TheoryGrader extends Component
         ?int $attemptId = null,
         ?int $questionId = null,
     ): void {
+        // The page says who is grading; the logged-in user must actually be that role
+        abort_unless(
+            ($role === 'admin' && auth()->user()?->role === 'school_admin')
+            || ($role === 'teacher' && auth()->user()?->role === 'teacher'),
+            403
+        );
+
         $this->examId = $examId;
         $this->role = $role;
         $this->mode = $mode;

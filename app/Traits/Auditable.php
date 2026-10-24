@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Traits;
 
 use App\Models\AuditLog;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Add this trait to any model that should be audit-logged.
@@ -21,8 +22,8 @@ trait Auditable
         static::updated(function ($model) {
             $dirty = $model->getDirty();
 
-            // Skip if only timestamps changed
-            $ignoredKeys = ['updated_at', 'created_at', 'last_login_at', 'last_login_ip'];
+            // Skip if only timestamps changed (a restore is logged as "restored" below)
+            $ignoredKeys = ['updated_at', 'created_at', 'last_login_at', 'last_login_ip', 'deleted_at', 'deleted_by'];
             $meaningfulChanges = array_diff_key($dirty, array_flip($ignoredKeys));
 
             if (empty($meaningfulChanges)) {
@@ -38,8 +39,25 @@ trait Auditable
         });
 
         static::deleted(function ($model) {
+            // Removing an already-deleted record for good is logged as "purged" below
+            if (method_exists($model, 'isForceDeleting') && $model->isForceDeleting() && $model->getOriginal('deleted_at')) {
+                return;
+            }
+
             static::logAudit($model, 'deleted', $model->getOriginal(), null);
         });
+
+        if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
+            static::restored(function ($model) {
+                static::logAudit($model, 'restored', null, null);
+            });
+
+            static::forceDeleted(function ($model) {
+                if ($model->getOriginal('deleted_at')) {
+                    static::logAudit($model, 'purged', null, null);
+                }
+            });
+        }
     }
 
     protected static function logAudit($model, string $action, ?array $oldValues, ?array $newValues): void

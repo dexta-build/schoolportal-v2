@@ -92,7 +92,7 @@
                             <flux:icon.document-text class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div class="min-w-0">
-                            <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Uploaded Results') }}</p>
+                            <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate">{{ __('Result Sheets (PDF)') }}</p>
                             <p class="stat-value text-zinc-900 dark:text-white">{{ number_format($totalResults) }}</p>
                         </div>
                     </div>

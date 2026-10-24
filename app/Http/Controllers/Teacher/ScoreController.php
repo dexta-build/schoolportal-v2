@@ -16,6 +16,7 @@ use App\Models\TeacherAction;
 use App\Models\Term;
 use App\Services\GradingScaleResolver;
 use App\Services\ScoreAggregationService;
+use App\Services\ScoreCorrectionService;
 use App\Traits\NotifiesAdminsOnSubmission;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -158,6 +159,10 @@ class ScoreController extends Controller
                 }
             }
         });
+
+        if ($updated > 0) {
+            app(ScoreCorrectionService::class)->markReportsStale($class->id, $term->id);
+        }
 
         return redirect()->back()->with('success', "{$updated} scores saved successfully.");
     }

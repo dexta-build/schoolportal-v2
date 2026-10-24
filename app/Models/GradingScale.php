@@ -25,6 +25,7 @@ class GradingScale extends Model
     protected function casts(): array
     {
         return [
+            'school_id' => 'integer',
             'is_default' => 'boolean',
             'is_active' => 'boolean',
         ];

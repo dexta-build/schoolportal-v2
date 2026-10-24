@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\DeleteSchoolFiles;
 use App\Models\AuditLog;
 use App\Models\School;
 use App\Models\User;
+use App\Services\SchoolDataExportService;
 use App\Services\SchoolSetupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
 /**
@@ -534,9 +537,42 @@ class SuperAdminSchoolCrudTest extends TestCase
     // Delete School
     // ─────────────────────────────────────────────────────────────────────────
 
+    public function test_active_school_cannot_be_deleted(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->delete(route('super-admin.schools.destroy', $this->targetSchool), [
+                'name_confirmation' => $this->targetSchool->name,
+                'reason' => 'Test deletion reason for this school.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseHas('schools', ['id' => $this->targetSchool->id]);
+    }
+
+    public function test_recently_deactivated_school_cannot_be_deleted_yet(): void
+    {
+        $this->targetSchool->update(['is_active' => false, 'deactivated_at' => now()->subDays(10)]);
+
+        $this->actingAs($this->superAdmin)
+            ->delete(route('super-admin.schools.destroy', $this->targetSchool), [
+                'name_confirmation' => $this->targetSchool->name,
+                'reason' => 'Test deletion reason for this school.',
+            ])
+            ->assertSessionHas('error', fn (string $message): bool => str_contains($message, now()->addDays(20)->format('j M Y')));
+
+        $this->assertDatabaseHas('schools', ['id' => $this->targetSchool->id]);
+    }
+
     public function test_super_admin_can_delete_a_school_with_correct_name(): void
     {
+        Bus::fake([DeleteSchoolFiles::class]);
+
+        // Deleting wipes everything, so the school must have been deactivated for 30+ days and its data exported
+        $this->targetSchool->update(['is_active' => false, 'deactivated_at' => now()->subDays(31)]);
+        $this->recordDataExport();
         $name = $this->targetSchool->name;
+        $id = $this->targetSchool->id;
 
         $this->actingAs($this->superAdmin)
             ->delete(route('super-admin.schools.destroy', $this->targetSchool), [
@@ -545,11 +581,70 @@ class SuperAdminSchoolCrudTest extends TestCase
             ])
             ->assertRedirect(route('super-admin.schools.index'));
 
-        $this->assertDatabaseMissing('schools', ['id' => $this->targetSchool->id]);
+        $this->assertDatabaseMissing('schools', ['id' => $id]);
+
+        // Its Cloudinary files are removed in the background
+        Bus::assertDispatched(DeleteSchoolFiles::class, fn (DeleteSchoolFiles $job) => $job->schoolId === $id);
+    }
+
+    public function test_school_cannot_be_deleted_before_its_data_is_exported(): void
+    {
+        $this->targetSchool->update(['is_active' => false, 'deactivated_at' => now()->subDays(31)]);
+
+        $this->actingAs($this->superAdmin)
+            ->delete(route('super-admin.schools.destroy', $this->targetSchool), [
+                'name_confirmation' => $this->targetSchool->name,
+                'reason' => 'Test deletion reason for this school.',
+            ])
+            ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'data export'));
+
+        $this->assertDatabaseHas('schools', ['id' => $this->targetSchool->id]);
+    }
+
+    public function test_export_downloads_every_school_record_without_passwords(): void
+    {
+        $this->targetSchool->update(['is_active' => false, 'deactivated_at' => now()->subDays(3)]);
+        $otherSchool = School::factory()->create(['name' => 'Other School']);
+        User::factory()->create(['school_id' => $otherSchool->id, 'name' => 'Not In This Export', 'role' => 'student']);
+
+        $response = $this->actingAs($this->superAdmin)
+            ->get(route('super-admin.schools.export-data', $this->targetSchool))
+            ->assertOk()
+            ->assertDownload();
+
+        // Read the ZIP back
+        $zipPath = $response->baseResponse->getFile()->getPathname();
+        $copy = sys_get_temp_dir().'/export-test-'.uniqid().'.zip';
+        copy($zipPath, $copy);
+        $archive = new \PharData($copy);
+        $users = (string) file_get_contents($archive['tables/users.csv']->getPathname());
+
+        $this->assertTrue(isset($archive['README.txt']));
+        $this->assertStringContainsString($this->schoolAdmin->username, $users);
+        $this->assertStringNotContainsString('Not In This Export', $users);
+        $header = str_getcsv(trim((string) strtok(ltrim($users, "\xEF\xBB\xBF"), "\n")));
+        $this->assertNotContains('password', $header);
+        $this->assertNotContains('two_factor_secret', $header);
+        unset($archive);
+        @unlink($copy);
+
+        // The export is recorded, which unlocks deletion once the waiting period is over
+        $this->assertNotNull(app(SchoolDataExportService::class)->exportSinceDeactivation($this->targetSchool->fresh()));
+    }
+
+    public function test_active_school_data_cannot_be_exported_for_deletion(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->get(route('super-admin.schools.export-data', $this->targetSchool))
+            ->assertRedirect()
+            ->assertSessionHas('error');
     }
 
     public function test_delete_school_fails_with_wrong_name(): void
     {
+        $this->targetSchool->update(['is_active' => false, 'deactivated_at' => now()->subDays(31)]);
+        $this->recordDataExport();
+
         $this->actingAs($this->superAdmin)
             ->delete(route('super-admin.schools.destroy', $this->targetSchool), [
                 'name_confirmation' => 'Wrong Name',
@@ -581,5 +676,16 @@ class SuperAdminSchoolCrudTest extends TestCase
         $afterCount = AuditLog::where('school_id', $this->platformSchool->id)
             ->where('action', 'school.activated')->count();
         $this->assertSame($beforeCount, $afterCount);
+    }
+
+    private function recordDataExport(): void
+    {
+        AuditLog::withoutGlobalScopes()->create([
+            'school_id' => $this->platformSchool->id,
+            'user_id' => $this->superAdmin->id,
+            'action' => SchoolDataExportService::AUDIT_ACTION,
+            'entity_type' => 'school',
+            'entity_id' => $this->targetSchool->id,
+        ]);
     }
 }
